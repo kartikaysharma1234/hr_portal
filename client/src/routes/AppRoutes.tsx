@@ -1,16 +1,21 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import { DashboardLayout } from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import { useTenant } from '../context/TenantContext';
+import { CtcBreakdownPage } from '../pages/CtcBreakdownPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage';
+import { SalarySlipPage } from '../pages/SalarySlipPage';
 import { SuperAdminDashboardPage } from '../pages/SuperAdminDashboardPage';
 import { SuperAdminLandingPage } from '../pages/SuperAdminLandingPage';
 import { SuperAdminLoginPage } from '../pages/SuperAdminLoginPage';
 import { SuperAdminOrganizationSettingsPage } from '../pages/SuperAdminOrganizationSettingsPage';
+import { TaxDeclarationPage } from '../pages/TaxDeclarationPage';
+import { TaxReportPage } from '../pages/TaxReportPage';
 import { TenantNotFoundPage } from '../pages/TenantNotFoundPage';
 import { TenantWelcomePage } from '../pages/TenantWelcomePage';
 import { VerifyEmailPage } from '../pages/VerifyEmailPage';
@@ -67,7 +72,13 @@ export const AppRoutes = (): JSX.Element => {
       <Route path="/tenant-not-found" element={<TenantNotFoundPage />} />
 
       <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route element={<DashboardLayout />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/ctc" element={<CtcBreakdownPage />} />
+          <Route path="/salary-slip" element={<SalarySlipPage />} />
+          <Route path="/tax-declaration" element={<TaxDeclarationPage />} />
+          <Route path="/tax-report" element={<TaxReportPage />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

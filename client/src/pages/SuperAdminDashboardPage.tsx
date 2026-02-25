@@ -74,8 +74,10 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
       const data = await platformApi.listOrganizations();
       setOrganizations(data);
       setSuccess('Organization created successfully.');
-    } catch {
-      setError('Unable to create organization. Check subdomain/admin data and try again.');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      const serverMessage = axiosErr?.response?.data?.message;
+      setError(serverMessage || 'Unable to create organization. Check subdomain/admin data and try again.');
     } finally {
       setIsCreating(false);
     }
@@ -212,10 +214,18 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
               <input
                 id="org-subdomain"
                 value={orgForm.subdomain}
-                onChange={(event) =>
-                  setOrgForm((prev) => ({ ...prev, subdomain: event.target.value.toLowerCase() }))
-                }
+                onChange={(event) => {
+                  // Strip everything except lowercase letters, numbers, and hyphens.
+                  // This prevents accidental pastes of full URLs (e.g. "api.localhost:5000").
+                  const sanitized = event.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]/g, '');
+                  setOrgForm((prev) => ({ ...prev, subdomain: sanitized }));
+                }}
                 placeholder="acme"
+                maxLength={30}
+                pattern="[a-z0-9-]{3,30}"
+                title="3–30 characters: lowercase letters, numbers, and hyphens only"
                 required
               />
               <small>
