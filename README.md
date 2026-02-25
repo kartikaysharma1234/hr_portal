@@ -41,8 +41,11 @@ If there is **no subdomain** (for example `localhost`), the app opens **Super Ad
 ## Key Backend Endpoints
 
 - `POST /api/platform/organizations` (platform access protected)
-  - Creates organization + initial admin user.
+  - Creates organization + initial admin user (+ optional `logoDataUrl`)
 - `GET /api/platform/organizations` (platform access protected)
+- `DELETE /api/platform/organizations/:id` (platform access protected)
+- `GET /api/platform/organizations/:id/settings` (platform access protected)
+- `PUT /api/platform/organizations/:id/settings` (platform access protected, deep-merge update)
 - `POST /api/platform/auth/login` (super admin login at root domain)
 - `POST /api/auth/register` (tenant-aware)
 - `POST /api/auth/login` (tenant-aware)
@@ -59,6 +62,25 @@ If there is **no subdomain** (for example `localhost`), the app opens **Super Ad
 - `POST /api/employees` (tenant-aware + RBAC)
 - `PUT /api/employees/:id` (tenant-aware + RBAC)
 - `DELETE /api/employees/:id` (tenant-aware + RBAC)
+- `POST /api/v1/attendance/punch-in`
+- `POST /api/v1/attendance/punch-out`
+- `GET /api/v1/attendance/my-attendance`
+- `GET /api/v1/attendance/daily/:date`
+- `GET|POST|PUT|DELETE /api/v1/attendance/settings`
+- `GET|POST|PUT|DELETE /api/v1/attendance/office-locations`
+- `GET /api/v1/attendance/pending-approvals`
+- `POST /api/v1/attendance/approve/:punchId`
+- `POST /api/v1/attendance/reject/:punchId`
+- `POST /api/v1/attendance/approve/bulk`
+- `POST /api/v1/attendance/regularize`
+- `GET /api/v1/attendance/regularization-requests`
+- `POST /api/v1/attendance/regularization/approve/:id`
+- `POST /api/v1/attendance/regularization/reject/:id`
+- `GET /api/v1/attendance/reports/*`
+- `GET /api/v1/attendance/reports/export?reportType=...&format=csv|excel|pdf`
+- `GET /api/v1/attendance/monitoring/realtime`
+- `POST /api/v1/attendance/import/csv`
+- `POST /api/v1/attendance/import/biometric`
 
 ## Project Structure
 
@@ -150,6 +172,18 @@ Use `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` from `server/.env`.
 - Tenant-aware auth flow
 - Refresh token persistence + rotation + logout revoke
 - Tenant-scoped employee CRUD module
+- Attendance module foundation:
+  - Attendance settings schema and scoped overrides (company/department/shift)
+  - Office locations schema with geofencing and department/shift restrictions
+  - Attendance punch schema with GPS/device/photo/approval/regularization fields
+  - Geofence + time + device + photo validation services
+  - Punch in/out APIs with invalid-handling modes and working-hours calculation
+  - Attendance history + daily detail APIs (map-ready payloads)
+  - Invalid punch approval workflow and bulk approval
+  - Regularization APIs with monthly limits and age validation
+  - Report APIs + export to CSV/Excel/PDF
+  - Bulk CSV/biometric import with validation and cutoff invalidation
+  - Socket.IO realtime live punch + occupancy events
 - Forgot password + reset password
 - Email verification for new user registration
 - Google login for tenant users
@@ -157,7 +191,7 @@ Use `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` from `server/.env`.
 - Login UI inspired by your reference design
 
 ### Next implementation steps
-- Remaining HR modules: attendance, leave, payroll, claims, reports
+- Remaining HR modules: leave, payroll, claims, performance, recruitment
 - RBAC permission matrix expansion and audit logs
 - Per-tenant branding and config UI
 - CI/CD + test suite + observability

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { Navigate, useNavigate } from 'react-router-dom';
 
 import { setAccessToken } from '../api/http';
@@ -11,7 +12,8 @@ const emptyOrgForm: CreateOrganizationPayload = {
   subdomain: '',
   adminName: '',
   adminEmail: '',
-  adminPassword: ''
+  adminPassword: '',
+  logoDataUrl: ''
 };
 
 export const SuperAdminDashboardPage = (): JSX.Element => {
@@ -22,6 +24,7 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
   const [orgForm, setOrgForm] = useState<CreateOrganizationPayload>(emptyOrgForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -78,6 +81,54 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
     }
   };
 
+  const onLogoChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file for organization logo.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo size must be less than 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result ?? '');
+      setOrgForm((prev) => ({ ...prev, logoDataUrl: dataUrl }));
+      setError(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onDeleteOrganization = async (organizationId: string, organizationName: string): Promise<void> => {
+    const isConfirmed = window.confirm(
+      `Delete organization "${organizationName}"? This will remove all related users and records.`
+    );
+    if (!isConfirmed) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setDeletingOrgId(organizationId);
+    try {
+      await platformApi.deleteOrganization(organizationId);
+      const data = await platformApi.listOrganizations();
+      setOrganizations(data);
+      setSuccess(`Organization "${organizationName}" deleted successfully.`);
+    } catch {
+      setError('Unable to delete organization. Please try again.');
+    } finally {
+      setDeletingOrgId(null);
+    }
+  };
+
   const totalOrganizations = organizations.length;
   const activeOrganizations = organizations.filter((org) => org.isActive).length;
   const inactiveOrganizations = totalOrganizations - activeOrganizations;
@@ -131,6 +182,29 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
                 placeholder="Acme Corp"
                 required
               />
+            </div>
+
+            <div className="sa-form-row">
+              <label htmlFor="org-logo">Organization Logo</label>
+              <input
+                id="org-logo"
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                onChange={onLogoChange}
+              />
+              <small>Accepted: PNG, JPG, WEBP, SVG (max 2MB)</small>
+              {orgForm.logoDataUrl ? (
+                <div className="sa-logo-preview-row">
+                  <img src={orgForm.logoDataUrl} alt="Organization logo preview" className="sa-logo-preview" />
+                  <button
+                    type="button"
+                    className="sa-clear-logo-btn"
+                    onClick={() => setOrgForm((prev) => ({ ...prev, logoDataUrl: '' }))}
+                  >
+                    Remove Logo
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="sa-form-row">
@@ -217,13 +291,35 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
             <div className="sa-org-list">
               {organizations.map((org) => (
                 <div key={org.id} className="sa-org-item">
-                  <div>
-                    <h3>{org.name}</h3>
-                    <p>{org.subdomain}.localhost</p>
+                  <div className="sa-org-main">
+                    <div className="sa-org-logo-shell">
+                      {org.logoDataUrl ? (
+                        <img src={org.logoDataUrl} alt={`${org.name} logo`} className="sa-org-logo" />
+                      ) : (
+                        <span>{org.name.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div>
+                      <h3>{org.name}</h3>
+                      <p>{org.subdomain}.localhost</p>
+                    </div>
                   </div>
-                  <span className={org.isActive ? 'sa-status active' : 'sa-status inactive'}>
-                    {org.isActive ? 'Active' : 'Inactive'}
-                  </span>
+                  <div className="sa-org-actions">
+                    <span className={org.isActive ? 'sa-status active' : 'sa-status inactive'}>
+                      {org.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                    <Link to={`/super-admin/organizations/${org.id}/settings`} className="sa-settings-org-link">
+                      Settings
+                    </Link>
+                    <button
+                      type="button"
+                      className="sa-delete-org-btn"
+                      onClick={() => void onDeleteOrganization(org.id, org.name)}
+                      disabled={deletingOrgId === org.id}
+                    >
+                      {deletingOrgId === org.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

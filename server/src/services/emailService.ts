@@ -32,6 +32,15 @@ const deliverEmail = async (params: {
   });
 };
 
+export const sendGenericEmail = async (params: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<void> => {
+  await deliverEmail(params);
+};
+
 export const sendEmailVerification = async (params: {
   to: string;
   name: string;

@@ -10,6 +10,7 @@ import { ResetPasswordPage } from '../pages/ResetPasswordPage';
 import { SuperAdminDashboardPage } from '../pages/SuperAdminDashboardPage';
 import { SuperAdminLandingPage } from '../pages/SuperAdminLandingPage';
 import { SuperAdminLoginPage } from '../pages/SuperAdminLoginPage';
+import { SuperAdminOrganizationSettingsPage } from '../pages/SuperAdminOrganizationSettingsPage';
 import { TenantNotFoundPage } from '../pages/TenantNotFoundPage';
 import { TenantWelcomePage } from '../pages/TenantWelcomePage';
 import { VerifyEmailPage } from '../pages/VerifyEmailPage';
@@ -25,6 +26,10 @@ export const AppRoutes = (): JSX.Element => {
         <Route path="/" element={<SuperAdminLandingPage />} />
         <Route path="/super-admin/login" element={<SuperAdminLoginPage />} />
         <Route path="/super-admin" element={<SuperAdminDashboardPage />} />
+        <Route
+          path="/super-admin/organizations/:id/settings"
+          element={<SuperAdminOrganizationSettingsPage />}
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );

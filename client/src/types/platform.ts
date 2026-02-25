@@ -10,12 +10,23 @@ export interface PlatformLoginResponse {
   token: string;
 }
 
+export type OrganizationSettings = Record<string, unknown>;
+
 export interface OrganizationSummary {
   id: string;
   name: string;
   subdomain: string;
   isActive: boolean;
+  logoDataUrl?: string;
   createdAt: string;
+}
+
+export interface OrganizationSettingsResponse {
+  id: string;
+  name: string;
+  subdomain: string;
+  logoDataUrl?: string;
+  settings: OrganizationSettings;
 }
 
 export interface CreateOrganizationPayload {
@@ -24,4 +35,5 @@ export interface CreateOrganizationPayload {
   adminName: string;
   adminEmail: string;
   adminPassword: string;
+  logoDataUrl?: string;
 }

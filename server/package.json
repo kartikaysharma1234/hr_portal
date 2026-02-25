@@ -20,9 +20,13 @@
     "helmet": "^8.0.0",
     "http-errors": "^2.0.0",
     "jsonwebtoken": "^9.0.2",
+    "luxon": "^3.7.2",
     "mongoose": "^8.9.0",
     "morgan": "^1.10.0",
-    "nodemailer": "^8.0.1"
+    "nodemailer": "^8.0.1",
+    "pdfkit": "^0.17.2",
+    "socket.io": "^4.8.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -31,9 +35,11 @@
     "@types/express": "^5.0.0",
     "@types/http-errors": "^2.0.4",
     "@types/jsonwebtoken": "^9.0.7",
+    "@types/luxon": "^3.7.1",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^7.0.11",
+    "@types/pdfkit": "^0.17.5",
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",

@@ -1,6 +1,8 @@
 import { apiClient } from './http';
 import type {
   CreateOrganizationPayload,
+  OrganizationSettings,
+  OrganizationSettingsResponse,
   OrganizationSummary,
   PlatformLoginResponse
 } from '../types/platform';
@@ -27,5 +29,25 @@ export const platformApi = {
 
   async createOrganization(payload: CreateOrganizationPayload): Promise<void> {
     await apiClient.post('/platform/organizations', payload);
+  },
+
+  async deleteOrganization(organizationId: string): Promise<void> {
+    await apiClient.delete(`/platform/organizations/${organizationId}`);
+  },
+
+  async getOrganizationSettings(organizationId: string): Promise<OrganizationSettingsResponse> {
+    const response = await apiClient.get<ApiEnvelope<OrganizationSettingsResponse>>(
+      `/platform/organizations/${organizationId}/settings`
+    );
+    return response.data.data;
+  },
+
+  async updateOrganizationSettings(
+    organizationId: string,
+    settingsPatch: OrganizationSettings
+  ): Promise<void> {
+    await apiClient.put(`/platform/organizations/${organizationId}/settings`, {
+      settings: settingsPatch
+    });
   }
 };

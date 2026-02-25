@@ -1,5 +1,7 @@
 import { Schema, model, type InferSchemaType } from 'mongoose';
 
+import { getDefaultOrganizationSettings } from '../config/defaultOrganizationSettings';
+
 const organizationSchema = new Schema(
   {
     name: {
@@ -19,15 +21,13 @@ const organizationSchema = new Schema(
       type: Boolean,
       default: true
     },
+    logoDataUrl: {
+      type: String,
+      default: ''
+    },
     settings: {
-      timezone: {
-        type: String,
-        default: 'UTC'
-      },
-      currency: {
-        type: String,
-        default: 'USD'
-      }
+      type: Schema.Types.Mixed,
+      default: getDefaultOrganizationSettings
     }
   },
   {
