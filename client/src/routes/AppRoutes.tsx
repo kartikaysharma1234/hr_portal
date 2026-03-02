@@ -4,9 +4,20 @@ import { DashboardLayout } from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import { useTenant } from '../context/TenantContext';
 import { CtcBreakdownPage } from '../pages/CtcBreakdownPage';
+import { EmployeeProfilePage } from '../pages/EmployeeProfilePage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage';
 import { LoginPage } from '../pages/LoginPage';
+import { ProfileFamilyPage } from '../pages/ProfileFamilyPage';
+import { ProfilePersonalPage } from '../pages/ProfilePersonalPage';
+import {
+  ProfileBankPage,
+  ProfileDocumentsPage,
+  ProfilePhotoPage,
+  ProfileQualificationPage,
+  ProfileSkillPage,
+} from '../pages/ProfilePlaceholders';
+import { ProfileWorkExpPage } from '../pages/ProfileWorkExpPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage';
 import { SalarySlipPage } from '../pages/SalarySlipPage';
@@ -78,6 +89,16 @@ export const AppRoutes = (): JSX.Element => {
           <Route path="/salary-slip" element={<SalarySlipPage />} />
           <Route path="/tax-declaration" element={<TaxDeclarationPage />} />
           <Route path="/tax-report" element={<TaxReportPage />} />
+          <Route path="/profile" element={<Navigate to="/profile/personal" replace />} />
+          <Route path="/profile/personal" element={<ProfilePersonalPage />} />
+          <Route path="/profile/company" element={<EmployeeProfilePage />} />
+          <Route path="/profile/family" element={<ProfileFamilyPage />} />
+          <Route path="/profile/work-experience" element={<ProfileWorkExpPage />} />
+          <Route path="/profile/skill" element={<ProfileSkillPage />} />
+          <Route path="/profile/qualification" element={<ProfileQualificationPage />} />
+          <Route path="/profile/photo" element={<ProfilePhotoPage />} />
+          <Route path="/profile/documents" element={<ProfileDocumentsPage />} />
+          <Route path="/profile/bank" element={<ProfileBankPage />} />
         </Route>
       </Route>
 
