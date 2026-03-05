@@ -193,3 +193,45 @@ export interface AttendanceSettingsRecord {
     };
   };
 }
+
+export interface AttendanceProfileContext {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  department: string;
+  designation: string;
+  dateOfJoining: string;
+}
+
+export type LeaveTypeCode = 'PL' | 'CL' | 'SL' | 'OH';
+
+export interface AttendanceLeaveLedgerMonth {
+  month: number;
+  monthLabel: string;
+  days: number;
+  credit: number;
+  availed: number;
+  availedDates: string[];
+}
+
+export interface AttendanceLeaveLedger {
+  employee: {
+    employeeId: string;
+    employeeCode: string;
+    employeeName: string;
+  };
+  leaveType: LeaveTypeCode;
+  year: number;
+  openingBalance: number;
+  openingBalanceDate: string;
+  months: AttendanceLeaveLedgerMonth[];
+  totals: {
+    credit: number;
+    availed: number;
+  };
+  balances: {
+    ledgerBalance: number;
+    currentBalance: number;
+    discrepancy: number;
+  };
+}

@@ -12,7 +12,7 @@ const statusColors: Record<string, { bg: string; color: string; label: string }>
 };
 
 const quickActions = [
-  { label: 'Monthly Attendance', icon: '📅', gradient: 'linear-gradient(135deg, #ff9a56 0%, #ff6b35 100%)', route: '' },
+  { label: 'Monthly Attendance', icon: '📅', gradient: 'linear-gradient(135deg, #ff9a56 0%, #ff6b35 100%)', route: '/attendance/monthly' },
   { label: 'Leave Request', icon: '🏖️', gradient: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', route: '' },
   { label: 'Holiday List', icon: '🎉', gradient: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)', route: '' },
   { label: 'Expense Claim', icon: '🧾', gradient: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', route: '' },

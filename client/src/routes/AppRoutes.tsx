@@ -3,6 +3,12 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import { useTenant } from '../context/TenantContext';
+import {
+  AttendanceDailyPage,
+  AttendanceLeaveLedgerPage,
+  AttendanceMonthlyPage,
+  AttendanceYearlyPage,
+} from '../pages/MyAttendancePage';
 import { CtcBreakdownPage } from '../pages/CtcBreakdownPage';
 import { EmployeeProfilePage } from '../pages/EmployeeProfilePage';
 import { DashboardPage } from '../pages/DashboardPage';
@@ -89,6 +95,11 @@ export const AppRoutes = (): JSX.Element => {
           <Route path="/salary-slip" element={<SalarySlipPage />} />
           <Route path="/tax-declaration" element={<TaxDeclarationPage />} />
           <Route path="/tax-report" element={<TaxReportPage />} />
+          <Route path="/attendance" element={<Navigate to="/attendance/daily" replace />} />
+          <Route path="/attendance/daily" element={<AttendanceDailyPage />} />
+          <Route path="/attendance/monthly" element={<AttendanceMonthlyPage />} />
+          <Route path="/attendance/yearly" element={<AttendanceYearlyPage />} />
+          <Route path="/attendance/leave-ledger" element={<AttendanceLeaveLedgerPage />} />
           <Route path="/profile" element={<Navigate to="/profile/personal" replace />} />
           <Route path="/profile/personal" element={<ProfilePersonalPage />} />
           <Route path="/profile/company" element={<EmployeeProfilePage />} />

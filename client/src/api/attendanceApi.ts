@@ -2,9 +2,12 @@ import { apiClient } from './http';
 import type {
   AttendanceDailyDetail,
   AttendanceHistoryRow,
+  AttendanceLeaveLedger,
   AttendanceLocationPayload,
+  AttendanceProfileContext,
   AttendanceRealtimeSnapshot,
-  AttendanceSettingsRecord
+  AttendanceSettingsRecord,
+  LeaveTypeCode
 } from '../types/attendance';
 
 interface ApiEnvelope<T> {
@@ -89,6 +92,24 @@ export const attendanceApi = {
   async getDailyDetail(date: string): Promise<AttendanceDailyDetail> {
     const response = await apiClient.get<ApiEnvelope<AttendanceDailyDetail>>(
       `/v1/attendance/daily/${date}`
+    );
+    return response.data.data;
+  },
+
+  async getMyContext(): Promise<AttendanceProfileContext> {
+    const response = await apiClient.get<ApiEnvelope<AttendanceProfileContext>>(
+      '/v1/attendance/my-context'
+    );
+    return response.data.data;
+  },
+
+  async getLeaveLedger(params: {
+    year: number;
+    leaveType: LeaveTypeCode;
+  }): Promise<AttendanceLeaveLedger> {
+    const response = await apiClient.get<ApiEnvelope<AttendanceLeaveLedger>>(
+      '/v1/attendance/leave-ledger',
+      { params }
     );
     return response.data.data;
   },

@@ -22,6 +22,13 @@ const myProfileItems = [
   { to: '/profile/bank', label: 'Bank Account Details' },
 ];
 
+const myAttendanceItems = [
+  { to: '/attendance/daily', label: 'Daily' },
+  { to: '/attendance/monthly', label: 'Monthly' },
+  { to: '/attendance/yearly', label: 'Yearly' },
+  { to: '/attendance/leave-ledger', label: 'Leave Ledger' },
+];
+
 export const DashboardLayout = (): JSX.Element => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -31,6 +38,9 @@ export const DashboardLayout = (): JSX.Element => {
   const [myProfileOpen, setMyProfileOpen] = useState(() =>
     location.pathname.startsWith('/profile')
   );
+  const [myAttendanceOpen, setMyAttendanceOpen] = useState(() =>
+    location.pathname.startsWith('/attendance')
+  );
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +48,9 @@ export const DashboardLayout = (): JSX.Element => {
   useEffect(() => {
     if (location.pathname.startsWith('/profile')) {
       setMyProfileOpen(true);
+    }
+    if (location.pathname.startsWith('/attendance')) {
+      setMyAttendanceOpen(true);
     }
   }, [location.pathname]);
 
@@ -139,22 +152,36 @@ export const DashboardLayout = (): JSX.Element => {
               ))}
             </div>
           </div>
-        </nav>
 
-        <div className="ess-sidebar-footer">
-          <div className="ess-sidebar-user">
-            <div className="ess-user-avatar">
-              {(user?.name ?? 'U').charAt(0).toUpperCase()}
-            </div>
-            <div className="ess-user-info">
-              <strong>{user?.name}</strong>
-              <span>{user?.role}</span>
+          {/* My Attendance — Collapsible */}
+          <div className="ess-nav-group">
+            <button
+              type="button"
+              className={`ess-nav-link ess-nav-group-toggle ${myAttendanceOpen ? 'ess-nav-group-toggle--open' : ''}`}
+              onClick={() => setMyAttendanceOpen(!myAttendanceOpen)}
+            >
+              <span className="ess-nav-icon">{'\u{1F4C5}'}</span>
+              <span>My Attendance</span>
+              <span className={`ess-nav-chevron ${myAttendanceOpen ? 'ess-nav-chevron--open' : ''}`}>▸</span>
+            </button>
+
+            <div className={`ess-nav-submenu ${myAttendanceOpen ? 'ess-nav-submenu--open' : ''}`}>
+              {myAttendanceItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `ess-nav-sublink ${isActive ? 'ess-nav-sublink--active' : ''}`
+                  }
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
             </div>
           </div>
-          <button type="button" className="ess-logout-btn" onClick={logout}>
-            Logout
-          </button>
-        </div>
+        </nav>
+
       </aside>
 
       {/* Main Content */}
@@ -171,11 +198,11 @@ export const DashboardLayout = (): JSX.Element => {
             <span />
           </button>
 
-          <div className="ess-topbar-right">
-            <span className="ess-greeting">
-              Welcome back, <strong>{user?.name?.split(' ')[0]}</strong>
-            </span>
+          <span className="ess-greeting">
+            Welcome back, <strong>{user?.name?.split(' ')[0]}</strong>
+          </span>
 
+          <div className="ess-topbar-right">
             {/* Employee Code Badge + User Dropdown */}
             <div className="ess-topbar-user" ref={dropdownRef}>
               <button

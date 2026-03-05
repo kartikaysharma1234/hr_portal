@@ -11,6 +11,7 @@ import {
   deleteOfficeLocation,
   exportAttendanceReport,
   getAttendanceSettings,
+  getMyAttendanceContext,
   getDailyAttendanceDetail,
   getDailyReport,
   getDepartmentWiseReport,
@@ -19,6 +20,7 @@ import {
   getLateTrendReport,
   getMonthlySummaryReport,
   getMyAttendance,
+  getMyLeaveLedger,
   getPendingApprovals,
   getRealtimeAttendanceSnapshot,
   getSourceAnalysisReport,
@@ -42,8 +44,10 @@ attendanceRouter.use(resolveTenant, requireAuth);
 
 attendanceRouter.post('/punch-in', punchIn);
 attendanceRouter.post('/punch-out', punchOut);
+attendanceRouter.get('/my-context', getMyAttendanceContext);
 attendanceRouter.get('/my-attendance', getMyAttendance);
 attendanceRouter.get('/daily/:date', getDailyAttendanceDetail);
+attendanceRouter.get('/leave-ledger', getMyLeaveLedger);
 
 attendanceRouter.get('/settings', getAttendanceSettings);
 attendanceRouter.post('/settings', createAttendanceSettings);
