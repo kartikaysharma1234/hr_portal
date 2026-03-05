@@ -7,6 +7,7 @@ import { getDefaultAttendanceSettings } from '../config/defaultAttendanceSetting
 import { AttendanceSettingsModel } from '../models/AttendanceSettings';
 import { getDefaultOrganizationSettings } from '../config/defaultOrganizationSettings';
 import { AuthActionTokenModel } from '../models/AuthActionToken';
+import { AttendanceLeaveLedgerModel } from '../models/AttendanceLeaveLedger';
 import { AttendancePunchModel } from '../models/AttendancePunch';
 import { AttendanceRegularizationModel } from '../models/AttendanceRegularization';
 import { EmployeeModel } from '../models/Employee';
@@ -134,6 +135,7 @@ export const deleteOrganization = asyncHandler(async (req: Request, res: Respons
     EmployeeModel.deleteMany({ organization: organizationId }),
     AttendanceSettingsModel.deleteMany({ organization: organizationId }),
     OfficeLocationModel.deleteMany({ organization: organizationId }),
+    AttendanceLeaveLedgerModel.deleteMany({ organization: organizationId }),
     AttendancePunchModel.deleteMany({ organization: organizationId }),
     AttendanceRegularizationModel.deleteMany({ organization: organizationId }),
     RefreshTokenModel.deleteMany({ organization: organizationId }),

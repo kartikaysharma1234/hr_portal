@@ -245,6 +245,20 @@ export const getDefaultOrganizationSettings = (): OrganizationSettings => {
         carryForwardEnabled: true,
         carryForwardLimit: 10
       },
+      leaveAccrualDefaults: {
+        openingBalances: {
+          casualLeave: 8,
+          sickLeave: 7,
+          privilegeLeave: 9.75,
+          optionalHoliday: 2
+        },
+        monthlyCredit: {
+          casualLeave: 0,
+          sickLeave: 0,
+          privilegeLeave: 1.25,
+          optionalHoliday: 0
+        }
+      },
       leaveTypes: {
         casualLeave: true,
         sickLeave: true,

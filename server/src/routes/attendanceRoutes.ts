@@ -21,6 +21,7 @@ import {
   getMonthlySummaryReport,
   getMyAttendance,
   getMyLeaveLedger,
+  listLeaveLedgerEmployees,
   getPendingApprovals,
   getRealtimeAttendanceSnapshot,
   getSourceAnalysisReport,
@@ -32,6 +33,7 @@ import {
   punchOut,
   rejectPunch,
   rejectRegularization,
+  upsertLeaveLedger,
   updateAttendanceSettings,
   updateOfficeLocation
 } from '../controllers/attendanceController';
@@ -48,6 +50,8 @@ attendanceRouter.get('/my-context', getMyAttendanceContext);
 attendanceRouter.get('/my-attendance', getMyAttendance);
 attendanceRouter.get('/daily/:date', getDailyAttendanceDetail);
 attendanceRouter.get('/leave-ledger', getMyLeaveLedger);
+attendanceRouter.put('/leave-ledger', upsertLeaveLedger);
+attendanceRouter.get('/leave-ledger/employees', listLeaveLedgerEmployees);
 
 attendanceRouter.get('/settings', getAttendanceSettings);
 attendanceRouter.post('/settings', createAttendanceSettings);

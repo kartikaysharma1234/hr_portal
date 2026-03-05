@@ -235,3 +235,11 @@ export interface AttendanceLeaveLedger {
     discrepancy: number;
   };
 }
+
+export interface AttendanceLedgerEmployee {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  department: string;
+  designation: string;
+}

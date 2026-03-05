@@ -9,6 +9,7 @@ import { AttendanceRegularizationModel } from '../models/AttendanceRegularizatio
 import { AttendanceSettingsModel } from '../models/AttendanceSettings';
 import { EmployeeModel } from '../models/Employee';
 import { OfficeLocationModel } from '../models/OfficeLocation';
+import { OrganizationModel } from '../models/Organization';
 import { UserModel } from '../models/User';
 import { asyncHandler } from '../utils/asyncHandler';
 import { getDefaultAttendanceSettings } from '../config/defaultAttendanceSettings';
@@ -46,11 +47,121 @@ const attendanceApproverRoles = new Set(['super_admin', 'admin', 'manager']);
 const leaveTypeValues = ['PL', 'CL', 'SL', 'OH'] as const;
 type LeaveTypeCode = (typeof leaveTypeValues)[number];
 
-const openingBalanceDefaults: Record<LeaveTypeCode, number> = {
+const openingBalanceFallbacks: Record<LeaveTypeCode, number> = {
   PL: 9.75,
   CL: 8,
   SL: 7,
   OH: 2
+};
+
+const monthlyCreditFallbacks: Record<LeaveTypeCode, number> = {
+  PL: 1.25,
+  CL: 0,
+  SL: 0,
+  OH: 0
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+};
+
+const pickFiniteNumber = (...values: unknown[]): number | null => {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const resolveMonthFromName = (rawValue: unknown): number => {
+  const monthRaw = String(rawValue ?? '').trim();
+  if (!monthRaw) {
+    return 1;
+  }
+
+  const fullMatch = DateTime.fromFormat(monthRaw, 'LLLL');
+  if (fullMatch.isValid && fullMatch.month) {
+    return fullMatch.month;
+  }
+
+  const shortMatch = DateTime.fromFormat(monthRaw, 'LLL');
+  if (shortMatch.isValid && shortMatch.month) {
+    return shortMatch.month;
+  }
+
+  return 1;
+};
+
+const resolveLeaveAccrualDefaults = async (organizationId: string): Promise<{
+  openingBalances: Record<LeaveTypeCode, number>;
+  monthlyCredit: Record<LeaveTypeCode, number>;
+  leaveYearStartMonth: number;
+}> => {
+  const organization = await OrganizationModel.findById(organizationId)
+    .select({ settings: 1 })
+    .lean();
+
+  const settings = isRecord(organization?.settings) ? organization.settings : {};
+  const leaveManagement = isRecord(settings.leaveManagement) ? settings.leaveManagement : {};
+  const generalLeaveSettings = isRecord(leaveManagement.generalLeaveSettings)
+    ? leaveManagement.generalLeaveSettings
+    : {};
+  const leaveAccrualDefaults = isRecord(leaveManagement.leaveAccrualDefaults)
+    ? leaveManagement.leaveAccrualDefaults
+    : {};
+  const openingBalancesRaw = isRecord(leaveAccrualDefaults.openingBalances)
+    ? leaveAccrualDefaults.openingBalances
+    : {};
+  const monthlyCreditRaw = isRecord(leaveAccrualDefaults.monthlyCredit)
+    ? leaveAccrualDefaults.monthlyCredit
+    : {};
+
+  const openingBalances: Record<LeaveTypeCode, number> = {
+    PL:
+      pickFiniteNumber(
+        openingBalancesRaw.PL,
+        openingBalancesRaw.privilegeLeave,
+        openingBalancesRaw.earnedLeave
+      ) ?? openingBalanceFallbacks.PL,
+    CL:
+      pickFiniteNumber(openingBalancesRaw.CL, openingBalancesRaw.casualLeave) ??
+      openingBalanceFallbacks.CL,
+    SL:
+      pickFiniteNumber(openingBalancesRaw.SL, openingBalancesRaw.sickLeave) ??
+      openingBalanceFallbacks.SL,
+    OH:
+      pickFiniteNumber(openingBalancesRaw.OH, openingBalancesRaw.optionalHoliday) ??
+      openingBalanceFallbacks.OH,
+  };
+
+  const monthlyCredit: Record<LeaveTypeCode, number> = {
+    PL:
+      pickFiniteNumber(
+        monthlyCreditRaw.PL,
+        monthlyCreditRaw.privilegeLeave,
+        monthlyCreditRaw.earnedLeave
+      ) ?? monthlyCreditFallbacks.PL,
+    CL:
+      pickFiniteNumber(monthlyCreditRaw.CL, monthlyCreditRaw.casualLeave) ??
+      monthlyCreditFallbacks.CL,
+    SL:
+      pickFiniteNumber(monthlyCreditRaw.SL, monthlyCreditRaw.sickLeave) ??
+      monthlyCreditFallbacks.SL,
+    OH:
+      pickFiniteNumber(monthlyCreditRaw.OH, monthlyCreditRaw.optionalHoliday) ??
+      monthlyCreditFallbacks.OH,
+  };
+
+  const leaveYearStartMonth = resolveMonthFromName(generalLeaveSettings.leaveYearStartMonth);
+
+  return {
+    openingBalances,
+    monthlyCredit,
+    leaveYearStartMonth,
+  };
 };
 
 const parseYear = (rawValue: unknown): number => {
@@ -87,12 +198,14 @@ const buildDefaultMonthlyRows = (year: number, leaveType: LeaveTypeCode): Array<
     availedDates: Date[];
   }> = [];
 
+  const fallbackCredit = monthlyCreditFallbacks[leaveType] ?? 0;
+
   for (let month = 1; month <= 12; month += 1) {
     const monthStart = DateTime.fromObject({ year, month, day: 1 });
     rows.push({
       month,
       days: monthStart.daysInMonth ?? 30,
-      credit: leaveType === 'PL' ? 1.25 : 0,
+      credit: fallbackCredit,
       availed: 0,
       availedDates: []
     });
@@ -118,23 +231,166 @@ const ensureLeaveLedgerDocument = async (params: {
     return existing;
   }
 
+  const defaults = await resolveLeaveAccrualDefaults(params.organizationId);
   const openingBalanceDate = DateTime.fromObject({
     year: params.year,
-    month: 1,
+    month: defaults.leaveYearStartMonth,
     day: 1
   }).toJSDate();
+
+  const monthlyRows = buildDefaultMonthlyRows(params.year, params.leaveType).map((row) => ({
+    ...row,
+    credit: defaults.monthlyCredit[params.leaveType] ?? row.credit,
+  }));
 
   const created = await AttendanceLeaveLedgerModel.create({
     organization: params.organizationId,
     employee: params.employeeId,
     leaveType: params.leaveType,
     year: params.year,
-    openingBalance: openingBalanceDefaults[params.leaveType],
+    openingBalance: defaults.openingBalances[params.leaveType] ?? openingBalanceFallbacks[params.leaveType],
     openingBalanceDate,
-    monthly: buildDefaultMonthlyRows(params.year, params.leaveType)
+    monthly: monthlyRows
   });
 
   return created.toObject();
+};
+
+const canManageLeaveLedger = (req: Request): boolean => {
+  return Boolean(req.user && attendanceApproverRoles.has(req.user.role));
+};
+
+const parseLedgerDate = (rawValue: unknown, fieldName: string): Date => {
+  const input = String(rawValue ?? '').trim();
+  if (!input) {
+    throw createHttpError(400, `${fieldName} is required`);
+  }
+
+  const isoDate = DateTime.fromISO(input);
+  if (isoDate.isValid) {
+    return isoDate.toJSDate();
+  }
+
+  const displayDate = DateTime.fromFormat(input, 'dd-LLL-yyyy');
+  if (displayDate.isValid) {
+    return displayDate.toJSDate();
+  }
+
+  throw createHttpError(400, `${fieldName} is invalid`);
+};
+
+const resolveLedgerEmployee = async (params: {
+  req: Request;
+  organizationId: string;
+  explicitEmployeeId?: unknown;
+}): Promise<any> => {
+  const requestedEmployeeId = String(params.explicitEmployeeId ?? '').trim();
+
+  if (requestedEmployeeId) {
+    if (!mongoose.Types.ObjectId.isValid(requestedEmployeeId)) {
+      throw createHttpError(400, 'employeeId is invalid');
+    }
+
+    if (!canManageLeaveLedger(params.req)) {
+      throw createHttpError(403, 'Only manager/admin can select employeeId');
+    }
+
+    const employeeById = await EmployeeModel.findOne({
+      _id: requestedEmployeeId,
+      organization: params.organizationId
+    }).lean();
+
+    if (!employeeById) {
+      throw createHttpError(404, 'Employee profile not found');
+    }
+
+    return employeeById;
+  }
+
+  try {
+    const employeeContext = await resolveEmployeeForAuthenticatedUser(params.req);
+    const employeeDoc = await EmployeeModel.findOne({
+      _id: employeeContext.employeeId,
+      organization: params.organizationId
+    }).lean();
+
+    if (!employeeDoc) {
+      throw createHttpError(404, 'Employee profile not found');
+    }
+
+    return employeeDoc;
+  } catch (error) {
+    if (canManageLeaveLedger(params.req)) {
+      throw createHttpError(
+        400,
+        'employeeId is required for admin/manager users without linked employee profile'
+      );
+    }
+
+    throw error;
+  }
+};
+
+const normalizeLeaveLedgerPayload = (params: {
+  ledger: any;
+  employeeDoc: any;
+  leaveType: LeaveTypeCode;
+  year: number;
+}) => {
+  const monthRows = [...(params.ledger.monthly ?? [])]
+    .sort((a: any, b: any) => Number(a.month) - Number(b.month))
+    .map((item: any) => {
+      const monthNumber = Number(item.month);
+      const monthLabel = DateTime.fromObject({
+        year: params.year,
+        month: monthNumber,
+        day: 1
+      }).toFormat('LLL - yyyy');
+
+      const availedDates = Array.isArray(item.availedDates)
+        ? item.availedDates.map((date: Date) =>
+            DateTime.fromJSDate(new Date(date)).toFormat('dd-LLL-yyyy')
+          )
+        : [];
+
+      return {
+        month: monthNumber,
+        monthLabel,
+        days: Number(item.days ?? 0),
+        credit: Number(item.credit ?? 0),
+        availed: Number(item.availed ?? 0),
+        availedDates
+      };
+    });
+
+  const totalCredit = monthRows.reduce((sum, row) => sum + row.credit, 0);
+  const totalAvailed = monthRows.reduce((sum, row) => sum + row.availed, 0);
+  const openingBalance = Number(params.ledger.openingBalance ?? 0);
+  const ledgerBalance = openingBalance + totalCredit - totalAvailed;
+
+  return {
+    employee: {
+      employeeId: params.employeeDoc._id.toString(),
+      employeeCode: params.employeeDoc.employeeCode,
+      employeeName: `${params.employeeDoc.firstName} ${params.employeeDoc.lastName}`.trim()
+    },
+    leaveType: params.leaveType,
+    year: params.year,
+    openingBalance,
+    openingBalanceDate: DateTime.fromJSDate(new Date(params.ledger.openingBalanceDate)).toFormat(
+      'dd-LLL-yyyy'
+    ),
+    months: monthRows,
+    totals: {
+      credit: Number(totalCredit.toFixed(2)),
+      availed: Number(totalAvailed.toFixed(2))
+    },
+    balances: {
+      ledgerBalance: Number(ledgerBalance.toFixed(2)),
+      currentBalance: Number(ledgerBalance.toFixed(2)),
+      discrepancy: 0
+    }
+  };
 };
 
 const requireTenantAndUser = (req: Request): { organizationId: string; userId: string } => {
@@ -714,83 +970,201 @@ export const getMyAttendanceContext = asyncHandler(async (req: Request, res: Res
 
 export const getMyLeaveLedger = asyncHandler(async (req: Request, res: Response) => {
   const { organizationId } = requireTenantAndUser(req);
-  const employeeContext = await resolveEmployeeForAuthenticatedUser(req);
 
   const leaveType = parseLeaveType(req.query.leaveType);
   const year = parseYear(req.query.year ?? DateTime.now().year);
-
-  const employeeDoc = await EmployeeModel.findOne({
-    _id: employeeContext.employeeId,
-    organization: organizationId
-  }).lean();
-
-  if (!employeeDoc) {
-    throw createHttpError(404, 'Employee profile not found');
-  }
+  const employeeDoc = await resolveLedgerEmployee({
+    req,
+    organizationId,
+    explicitEmployeeId: req.query.employeeId
+  });
 
   const ledger = await ensureLeaveLedgerDocument({
     organizationId,
-    employeeId: employeeContext.employeeId,
+    employeeId: employeeDoc._id.toString(),
     leaveType,
     year
   });
 
-  const monthRows = [...(ledger.monthly ?? [])]
-    .sort((a: any, b: any) => Number(a.month) - Number(b.month))
-    .map((item: any) => {
-      const monthNumber = Number(item.month);
-      const monthLabel = DateTime.fromObject({
-        year,
-        month: monthNumber,
-        day: 1
-      }).toFormat('LLL - yyyy');
+  res.json({
+    success: true,
+    data: normalizeLeaveLedgerPayload({ ledger, employeeDoc, leaveType, year })
+  });
+});
 
-      const availedDates = Array.isArray(item.availedDates)
-        ? item.availedDates.map((date: Date) =>
-            DateTime.fromJSDate(new Date(date)).toFormat('dd-LLL-yyyy')
-          )
-        : [];
+export const listLeaveLedgerEmployees = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId } = requireTenantAndUser(req);
+  requireApproverRole(req);
 
-      return {
-        month: monthNumber,
-        monthLabel,
-        days: Number(item.days ?? 0),
-        credit: Number(item.credit ?? 0),
-        availed: Number(item.availed ?? 0),
-        availedDates
-      };
-    });
+  const search = String(req.query.search ?? '').trim();
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 100)));
 
-  const totalCredit = monthRows.reduce((sum, row) => sum + row.credit, 0);
-  const totalAvailed = monthRows.reduce((sum, row) => sum + row.availed, 0);
-  const openingBalance = Number(ledger.openingBalance ?? 0);
-  const ledgerBalance = openingBalance + totalCredit - totalAvailed;
+  const filters: Record<string, unknown> = {
+    organization: organizationId,
+    status: 'active'
+  };
+
+  if (search) {
+    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filters.$or = [
+      { firstName: regex },
+      { lastName: regex },
+      { employeeCode: regex },
+      { workEmail: regex }
+    ];
+  }
+
+  const rows = await EmployeeModel.find(filters)
+    .select({ _id: 1, employeeCode: 1, firstName: 1, lastName: 1, department: 1, designation: 1 })
+    .sort({ firstName: 1, lastName: 1 })
+    .limit(limit)
+    .lean();
 
   res.json({
     success: true,
-    data: {
-      employee: {
-        employeeId: employeeDoc._id.toString(),
-        employeeCode: employeeDoc.employeeCode,
-        employeeName: `${employeeDoc.firstName} ${employeeDoc.lastName}`.trim()
-      },
-      leaveType,
-      year,
-      openingBalance,
-      openingBalanceDate: DateTime.fromJSDate(new Date(ledger.openingBalanceDate)).toFormat(
-        'dd-LLL-yyyy'
-      ),
-      months: monthRows,
-      totals: {
-        credit: Number(totalCredit.toFixed(2)),
-        availed: Number(totalAvailed.toFixed(2))
-      },
-      balances: {
-        ledgerBalance: Number(ledgerBalance.toFixed(2)),
-        currentBalance: Number(ledgerBalance.toFixed(2)),
-        discrepancy: 0
-      }
+    data: rows.map((employee) => ({
+      employeeId: employee._id.toString(),
+      employeeCode: employee.employeeCode,
+      employeeName: `${employee.firstName} ${employee.lastName}`.trim(),
+      department: employee.department || '',
+      designation: employee.designation || ''
+    }))
+  });
+});
+
+export const upsertLeaveLedger = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId } = requireTenantAndUser(req);
+  requireApproverRole(req);
+
+  const leaveType = parseLeaveType(req.body.leaveType);
+  const year = parseYear(req.body.year ?? DateTime.now().year);
+  const employeeDoc = await resolveLedgerEmployee({
+    req,
+    organizationId,
+    explicitEmployeeId: req.body.employeeId
+  });
+
+  const ledger = await ensureLeaveLedgerDocument({
+    organizationId,
+    employeeId: employeeDoc._id.toString(),
+    leaveType,
+    year
+  });
+
+  const updates: Record<string, unknown> = {};
+
+  if (req.body.openingBalance !== undefined) {
+    const openingBalance = Number(req.body.openingBalance);
+    if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+      throw createHttpError(400, 'openingBalance must be a non-negative number');
     }
+    updates.openingBalance = openingBalance;
+  }
+
+  if (req.body.openingBalanceDate !== undefined) {
+    updates.openingBalanceDate = parseLedgerDate(req.body.openingBalanceDate, 'openingBalanceDate');
+  }
+
+  if (req.body.monthly !== undefined) {
+    if (!Array.isArray(req.body.monthly)) {
+      throw createHttpError(400, 'monthly must be an array');
+    }
+
+    const byMonth = new Map<number, any>();
+    for (const monthRow of ledger.monthly ?? []) {
+      byMonth.set(Number(monthRow.month), {
+        month: Number(monthRow.month),
+        days: Number(monthRow.days),
+        credit: Number(monthRow.credit ?? 0),
+        availed: Number(monthRow.availed ?? 0),
+        availedDates: Array.isArray(monthRow.availedDates)
+          ? monthRow.availedDates.map((date: Date) => new Date(date))
+          : []
+      });
+    }
+
+    for (const rawItem of req.body.monthly as Array<Record<string, unknown>>) {
+      const month = Number(rawItem.month);
+      if (!Number.isInteger(month) || month < 1 || month > 12) {
+        throw createHttpError(400, 'monthly.month must be between 1 and 12');
+      }
+
+      const current = byMonth.get(month) ?? {
+        month,
+        days: DateTime.fromObject({ year, month, day: 1 }).daysInMonth ?? 30,
+        credit: 0,
+        availed: 0,
+        availedDates: []
+      };
+
+      if (rawItem.credit !== undefined) {
+        const credit = Number(rawItem.credit);
+        if (!Number.isFinite(credit) || credit < 0) {
+          throw createHttpError(400, 'monthly.credit must be a non-negative number');
+        }
+        current.credit = credit;
+      }
+
+      if (rawItem.availed !== undefined) {
+        const availed = Number(rawItem.availed);
+        if (!Number.isFinite(availed) || availed < 0) {
+          throw createHttpError(400, 'monthly.availed must be a non-negative number');
+        }
+        current.availed = availed;
+      }
+
+      if (rawItem.days !== undefined) {
+        const days = Number(rawItem.days);
+        if (!Number.isInteger(days) || days < 1 || days > 31) {
+          throw createHttpError(400, 'monthly.days must be between 1 and 31');
+        }
+        current.days = days;
+      }
+
+      if (rawItem.availedDates !== undefined) {
+        if (!Array.isArray(rawItem.availedDates)) {
+          throw createHttpError(400, 'monthly.availedDates must be an array');
+        }
+
+        current.availedDates = rawItem.availedDates.map((date, index) =>
+          parseLedgerDate(date, `monthly.availedDates[${index}]`)
+        );
+      }
+
+      byMonth.set(month, current);
+    }
+
+    updates.monthly = Array.from(byMonth.values()).sort((a, b) => a.month - b.month);
+  }
+
+  const updated = await AttendanceLeaveLedgerModel.findOneAndUpdate(
+    {
+      organization: organizationId,
+      employee: employeeDoc._id,
+      leaveType,
+      year
+    },
+    {
+      $set: updates
+    },
+    {
+      new: true
+    }
+  ).lean();
+
+  if (!updated) {
+    throw createHttpError(500, 'Failed to update leave ledger');
+  }
+
+  res.json({
+    success: true,
+    message: 'Leave ledger updated successfully',
+    data: normalizeLeaveLedgerPayload({
+      ledger: updated,
+      employeeDoc,
+      leaveType,
+      year
+    })
   });
 });
 

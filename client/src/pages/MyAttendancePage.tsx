@@ -5,6 +5,7 @@ import { attendanceApi } from '../api/attendanceApi';
 import { useAuth } from '../context/AuthContext';
 import type {
   AttendanceDailyDetail,
+  AttendanceLedgerEmployee,
   AttendanceHistoryRow,
   AttendanceLeaveLedger,
   AttendanceProfileContext,
@@ -84,6 +85,24 @@ const parseIsoDate = (isoDate: string): Date => {
 const formatDisplayDate = (isoDate: string): string => {
   const date = parseIsoDate(isoDate);
   return `${pad(date.getDate())}-${monthNames[date.getMonth()]}-${date.getFullYear()}`;
+};
+
+const toIsoFromDisplayDate = (displayDate: string): string => {
+  const trimmed = displayDate.trim();
+  const matcher = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/.exec(trimmed);
+  if (!matcher) {
+    return trimmed;
+  }
+
+  const [, day, monAbbr, year] = matcher;
+  const monthIndex = monthNames.findIndex(
+    (monthName) => monthName.toLowerCase() === monAbbr.toLowerCase()
+  );
+  if (monthIndex < 0) {
+    return trimmed;
+  }
+
+  return `${year}-${pad(monthIndex + 1)}-${day}`;
 };
 
 const formatInputMonth = (date: Date): string => `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
@@ -188,6 +207,8 @@ const titleByView: Record<AttendanceView, string> = {
 export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isLedgerManager =
+    user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'manager';
 
   const now = new Date();
 
@@ -223,18 +244,46 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
     OH: 0,
   });
 
-  const [ledgerFilters, setLedgerFilters] = useState<{ leaveType: LeaveTypeCode; year: string }>({
+  const [ledgerEmployees, setLedgerEmployees] = useState<AttendanceLedgerEmployee[]>([]);
+  const [ledgerEmployeesLoading, setLedgerEmployeesLoading] = useState(false);
+
+  const [ledgerFilters, setLedgerFilters] = useState<{
+    leaveType: LeaveTypeCode;
+    year: string;
+    employeeId: string;
+  }>({
     leaveType: 'PL',
     year: String(now.getFullYear()),
+    employeeId: '',
   });
-  const [ledgerApplied, setLedgerApplied] = useState<{ leaveType: LeaveTypeCode; year: string }>({
+  const [ledgerApplied, setLedgerApplied] = useState<{
+    leaveType: LeaveTypeCode;
+    year: string;
+    employeeId: string;
+  }>({
     leaveType: 'PL',
     year: String(now.getFullYear()),
+    employeeId: '',
   });
   const [ledger, setLedger] = useState<AttendanceLeaveLedger | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
   const [ledgerModalMonth, setLedgerModalMonth] = useState<number | null>(null);
+  const [ledgerEditMode, setLedgerEditMode] = useState(false);
+  const [ledgerDraftOpeningBalance, setLedgerDraftOpeningBalance] = useState('');
+  const [ledgerDraftOpeningDate, setLedgerDraftOpeningDate] = useState('');
+  const [ledgerDraftMonths, setLedgerDraftMonths] = useState<
+    Array<{
+      month: number;
+      days: number;
+      credit: string;
+      availed: string;
+      availedDates: string;
+    }>
+  >([]);
+  const [ledgerSaveLoading, setLedgerSaveLoading] = useState(false);
+  const [ledgerSaveError, setLedgerSaveError] = useState('');
+  const [ledgerSaveSuccess, setLedgerSaveSuccess] = useState('');
 
   const employeeCode = context?.employeeCode ?? 'NA';
   const employeeName = context?.employeeName ?? user?.name ?? 'Employee';
@@ -246,6 +295,28 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
       setContextError('');
     } catch (caught) {
       setContextError(caught instanceof Error ? caught.message : 'Failed to load employee context');
+    }
+  };
+
+  const loadLedgerEmployees = async (): Promise<void> => {
+    if (!isLedgerManager) {
+      return;
+    }
+
+    setLedgerEmployeesLoading(true);
+
+    try {
+      const rows = await attendanceApi.listLeaveLedgerEmployees({ limit: 200 });
+      setLedgerEmployees(rows);
+      if (!ledgerFilters.employeeId && rows.length) {
+        const fallbackId = rows[0].employeeId;
+        setLedgerFilters((prev) => ({ ...prev, employeeId: fallbackId }));
+        setLedgerApplied((prev) => ({ ...prev, employeeId: fallbackId }));
+      }
+    } catch {
+      setLedgerEmployees([]);
+    } finally {
+      setLedgerEmployeesLoading(false);
     }
   };
 
@@ -335,7 +406,11 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
     }
   };
 
-  const loadLeaveLedger = async (filters: { leaveType: LeaveTypeCode; year: string }): Promise<void> => {
+  const loadLeaveLedger = async (filters: {
+    leaveType: LeaveTypeCode;
+    year: string;
+    employeeId: string;
+  }): Promise<void> => {
     const year = Number(filters.year);
     if (!Number.isInteger(year)) {
       setLedgerError('Year must be valid');
@@ -349,13 +424,82 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
       const response = await attendanceApi.getLeaveLedger({
         year,
         leaveType: filters.leaveType,
+        employeeId: filters.employeeId || undefined,
       });
       setLedger(response);
+      setLedgerEditMode(false);
+      setLedgerSaveError('');
     } catch (caught) {
       setLedger(null);
       setLedgerError(caught instanceof Error ? caught.message : 'Failed to load leave ledger');
     } finally {
       setLedgerLoading(false);
+    }
+  };
+
+  const beginLedgerEdit = (): void => {
+    if (!ledger) {
+      return;
+    }
+
+    setLedgerEditMode(true);
+    setLedgerSaveError('');
+    setLedgerSaveSuccess('');
+    setLedgerDraftOpeningBalance(String(ledger.openingBalance));
+    setLedgerDraftOpeningDate(toIsoFromDisplayDate(ledger.openingBalanceDate));
+    setLedgerDraftMonths(
+      ledger.months.map((monthRow) => ({
+        month: monthRow.month,
+        days: monthRow.days,
+        credit: String(monthRow.credit),
+        availed: String(monthRow.availed),
+        availedDates: monthRow.availedDates.join(', '),
+      }))
+    );
+  };
+
+  const saveLedgerEdits = async (): Promise<void> => {
+    if (!ledger || !ledgerFilters.employeeId) {
+      setLedgerSaveError('Select an employee first.');
+      return;
+    }
+
+    const year = Number(ledgerFilters.year);
+    if (!Number.isInteger(year)) {
+      setLedgerSaveError('Year must be valid.');
+      return;
+    }
+
+    setLedgerSaveLoading(true);
+    setLedgerSaveError('');
+    setLedgerSaveSuccess('');
+
+    try {
+      const updated = await attendanceApi.updateLeaveLedger({
+        employeeId: ledgerFilters.employeeId,
+        leaveType: ledgerFilters.leaveType,
+        year,
+        openingBalance: Number(ledgerDraftOpeningBalance),
+        openingBalanceDate: ledgerDraftOpeningDate,
+        monthly: ledgerDraftMonths.map((monthRow) => ({
+          month: monthRow.month,
+          days: monthRow.days,
+          credit: Number(monthRow.credit),
+          availed: Number(monthRow.availed),
+          availedDates: monthRow.availedDates
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+        })),
+      });
+
+      setLedger(updated);
+      setLedgerEditMode(false);
+      setLedgerSaveSuccess('Leave ledger updated successfully.');
+    } catch (caught) {
+      setLedgerSaveError(caught instanceof Error ? caught.message : 'Failed to update leave ledger');
+    } finally {
+      setLedgerSaveLoading(false);
     }
   };
 
@@ -410,6 +554,41 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
   }, []);
 
   useEffect(() => {
+    if (!context?.employeeId) {
+      return;
+    }
+
+    setLedgerFilters((prev) => {
+      if (prev.employeeId) {
+        return prev;
+      }
+      return { ...prev, employeeId: context.employeeId };
+    });
+    setLedgerApplied((prev) => {
+      if (prev.employeeId) {
+        return prev;
+      }
+      return { ...prev, employeeId: context.employeeId };
+    });
+  }, [context?.employeeId]);
+
+  useEffect(() => {
+    if (view === 'leave-ledger' && isLedgerManager) {
+      void loadLedgerEmployees();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, isLedgerManager]);
+
+  useEffect(() => {
+    if (view !== 'leave-ledger' || !ledgerApplied.employeeId) {
+      return;
+    }
+
+    void loadLeaveLedger(ledgerApplied);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, ledgerApplied.leaveType, ledgerApplied.year, ledgerApplied.employeeId]);
+
+  useEffect(() => {
     if (view === 'daily') {
       void loadDaily(dailyDate);
       return;
@@ -426,7 +605,7 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
     }
 
     if (view === 'leave-ledger') {
-      void loadLeaveLedger(ledgerApplied);
+      return;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
@@ -828,8 +1007,28 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
         <div className="attx-ledger-filter-grid">
           <label className="attx-ledger-field">
             <span>Employee:</span>
-            <select value={employeeCode} disabled>
-              <option value={employeeCode}>{`${employeeName} (${employeeCode})`}</option>
+            <select
+              value={ledgerFilters.employeeId}
+              disabled={!isLedgerManager || ledgerEmployeesLoading}
+              onChange={(event) =>
+                setLedgerFilters((prev) => ({
+                  ...prev,
+                  employeeId: event.target.value,
+                }))
+              }
+            >
+              {!isLedgerManager ? (
+                <option value={ledgerFilters.employeeId || context?.employeeId || ''}>
+                  {`${employeeName} (${employeeCode})`}
+                </option>
+              ) : null}
+              {isLedgerManager
+                ? ledgerEmployees.map((employee) => (
+                    <option key={employee.employeeId} value={employee.employeeId}>
+                      {`${employee.employeeName} (${employee.employeeCode})`}
+                    </option>
+                  ))
+                : null}
             </select>
           </label>
 
@@ -872,6 +1071,10 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
             type="button"
             className="attx-ledger-search"
             onClick={() => {
+              if (!ledgerFilters.employeeId) {
+                setLedgerError('Please select an employee');
+                return;
+              }
               setLedgerApplied(ledgerFilters);
               void loadLeaveLedger(ledgerFilters);
             }}
@@ -883,6 +1086,10 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
 
       {ledgerLoading ? <p className="attx-inline-feedback">Loading leave ledger...</p> : null}
       {ledgerError ? <p className="attx-inline-feedback attx-inline-feedback--error">{ledgerError}</p> : null}
+      {ledgerSaveError ? (
+        <p className="attx-inline-feedback attx-inline-feedback--error">{ledgerSaveError}</p>
+      ) : null}
+      {ledgerSaveSuccess ? <p className="attx-inline-feedback">{ledgerSaveSuccess}</p> : null}
 
       {ledger ? (
         <>
@@ -896,9 +1103,56 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
             <div className="attx-ledger-summary-row">
               <strong>{`${ledger.employee.employeeName} (${ledger.employee.employeeCode})`}</strong>
               <strong>{ledger.leaveType}</strong>
-              <strong>{ledger.openingBalanceDate}</strong>
-              <strong>{ledger.openingBalance.toFixed(2)}</strong>
+              {ledgerEditMode ? (
+                <input
+                  className="attx-ledger-input"
+                  type="date"
+                  value={ledgerDraftOpeningDate}
+                  onChange={(event) => setLedgerDraftOpeningDate(event.target.value)}
+                />
+              ) : (
+                <strong>{ledger.openingBalanceDate}</strong>
+              )}
+              {ledgerEditMode ? (
+                <input
+                  className="attx-ledger-input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={ledgerDraftOpeningBalance}
+                  onChange={(event) => setLedgerDraftOpeningBalance(event.target.value)}
+                />
+              ) : (
+                <strong>{ledger.openingBalance.toFixed(2)}</strong>
+              )}
             </div>
+            {isLedgerManager ? (
+              <div className="attx-ledger-actions">
+                {!ledgerEditMode ? (
+                  <button type="button" className="attx-ledger-edit-btn" onClick={beginLedgerEdit}>
+                    Edit Ledger
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="attx-ledger-edit-btn"
+                      disabled={ledgerSaveLoading}
+                      onClick={() => void saveLedgerEdits()}
+                    >
+                      {ledgerSaveLoading ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      className="attx-ledger-edit-btn attx-ledger-edit-btn--ghost"
+                      onClick={() => setLedgerEditMode(false)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : null}
           </section>
 
           <section className="attx-ledger-table-wrap">
@@ -913,14 +1167,72 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
                 </tr>
               </thead>
               <tbody>
-                {ledger.months.map((row) => (
+                {(ledgerEditMode ? ledgerDraftMonths : ledger.months).map((row) => (
                   <tr key={row.month}>
-                    <td>{row.monthLabel}</td>
+                    <td>{'monthLabel' in row ? row.monthLabel : `${monthNames[row.month - 1]} - ${ledger.year}`}</td>
                     <td>{row.days}</td>
-                    <td>{row.credit.toFixed(2)}</td>
-                    <td>{row.availed.toFixed(2)}</td>
                     <td>
-                      {row.availedDates.length ? (
+                      {ledgerEditMode ? (
+                        <input
+                          className="attx-ledger-input"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={row.credit}
+                          onChange={(event) =>
+                            setLedgerDraftMonths((prev) =>
+                              prev.map((monthRow) =>
+                                monthRow.month === row.month
+                                  ? { ...monthRow, credit: event.target.value }
+                                  : monthRow
+                              )
+                            )
+                          }
+                        />
+                      ) : (
+                        Number(row.credit).toFixed(2)
+                      )}
+                    </td>
+                    <td>
+                      {ledgerEditMode ? (
+                        <input
+                          className="attx-ledger-input"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={row.availed}
+                          onChange={(event) =>
+                            setLedgerDraftMonths((prev) =>
+                              prev.map((monthRow) =>
+                                monthRow.month === row.month
+                                  ? { ...monthRow, availed: event.target.value }
+                                  : monthRow
+                              )
+                            )
+                          }
+                        />
+                      ) : (
+                        Number(row.availed).toFixed(2)
+                      )}
+                    </td>
+                    <td>
+                      {ledgerEditMode ? (
+                        <input
+                          className="attx-ledger-input"
+                          type="text"
+                          value={row.availedDates}
+                          placeholder="dd-MMM-yyyy, dd-MMM-yyyy"
+                          onChange={(event) =>
+                            setLedgerDraftMonths((prev) =>
+                              prev.map((monthRow) =>
+                                monthRow.month === row.month
+                                  ? { ...monthRow, availedDates: event.target.value }
+                                  : monthRow
+                              )
+                            )
+                          }
+                        />
+                      ) : row.availedDates.length ? (
                         <button
                           type="button"
                           className="attx-ledger-view-btn"
@@ -935,8 +1247,18 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
                 <tr className="attx-ledger-total">
                   <td>Total</td>
                   <td />
-                  <td>{ledger.totals.credit.toFixed(2)}</td>
-                  <td>{ledger.totals.availed.toFixed(2)}</td>
+                  <td>
+                    {(ledgerEditMode
+                      ? ledgerDraftMonths.reduce((sum, item) => sum + Number(item.credit || 0), 0)
+                      : ledger.totals.credit
+                    ).toFixed(2)}
+                  </td>
+                  <td>
+                    {(ledgerEditMode
+                      ? ledgerDraftMonths.reduce((sum, item) => sum + Number(item.availed || 0), 0)
+                      : ledger.totals.availed
+                    ).toFixed(2)}
+                  </td>
                   <td />
                 </tr>
               </tbody>
@@ -1030,7 +1352,9 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
         <span>{titleByView[view]}</span>
       </header>
 
-      {contextError ? <p className="attx-inline-feedback attx-inline-feedback--error">{contextError}</p> : null}
+      {contextError && !(view === 'leave-ledger' && isLedgerManager) ? (
+        <p className="attx-inline-feedback attx-inline-feedback--error">{contextError}</p>
+      ) : null}
 
       {view !== 'leave-ledger' ? (
         <div className="attx-tab-row">

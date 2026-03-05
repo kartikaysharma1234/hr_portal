@@ -541,6 +541,46 @@
   border-top: 1px solid #e4e8f2;
 }
 
+.attx-ledger-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid #e4e8f2;
+}
+
+.attx-ledger-edit-btn {
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ef7e39, #e96f2e);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.attx-ledger-edit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.attx-ledger-edit-btn--ghost {
+  background: #dde4f3;
+  color: #3f4d6b;
+}
+
+.attx-ledger-input {
+  width: 100%;
+  min-width: 90px;
+  border: 1px solid #c5cee1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #36415d;
+  font: inherit;
+  padding: 5px 8px;
+}
+
 .attx-ledger-table-wrap {
   overflow: hidden;
 }

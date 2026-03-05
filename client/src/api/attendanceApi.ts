@@ -2,6 +2,7 @@ import { apiClient } from './http';
 import type {
   AttendanceDailyDetail,
   AttendanceHistoryRow,
+  AttendanceLedgerEmployee,
   AttendanceLeaveLedger,
   AttendanceLocationPayload,
   AttendanceProfileContext,
@@ -106,10 +107,43 @@ export const attendanceApi = {
   async getLeaveLedger(params: {
     year: number;
     leaveType: LeaveTypeCode;
+    employeeId?: string;
   }): Promise<AttendanceLeaveLedger> {
     const response = await apiClient.get<ApiEnvelope<AttendanceLeaveLedger>>(
       '/v1/attendance/leave-ledger',
       { params }
+    );
+    return response.data.data;
+  },
+
+  async listLeaveLedgerEmployees(params?: {
+    search?: string;
+    limit?: number;
+  }): Promise<AttendanceLedgerEmployee[]> {
+    const response = await apiClient.get<ApiEnvelope<AttendanceLedgerEmployee[]>>(
+      '/v1/attendance/leave-ledger/employees',
+      { params }
+    );
+    return response.data.data;
+  },
+
+  async updateLeaveLedger(payload: {
+    employeeId: string;
+    leaveType: LeaveTypeCode;
+    year: number;
+    openingBalance?: number;
+    openingBalanceDate?: string;
+    monthly?: Array<{
+      month: number;
+      days?: number;
+      credit?: number;
+      availed?: number;
+      availedDates?: string[];
+    }>;
+  }): Promise<AttendanceLeaveLedger> {
+    const response = await apiClient.put<ApiEnvelope<AttendanceLeaveLedger>>(
+      '/v1/attendance/leave-ledger',
+      payload
     );
     return response.data.data;
   },
