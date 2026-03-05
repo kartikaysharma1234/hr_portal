@@ -7,7 +7,7 @@ export interface TenantContext {
 export interface AuthTokenPayload {
   sub: string;
   organizationId: string;
-  role: 'super_admin' | 'admin' | 'manager' | 'employee';
+  role: 'super_admin' | 'admin' | 'hr' | 'manager' | 'employee';
   email: string;
 }
 

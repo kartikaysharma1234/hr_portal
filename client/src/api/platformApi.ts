@@ -4,7 +4,8 @@ import type {
   OrganizationSettings,
   OrganizationSettingsResponse,
   OrganizationSummary,
-  PlatformLoginResponse
+  PlatformLoginResponse,
+  UpdateOrganizationSubscriptionPayload,
 } from '../types/platform';
 
 interface ApiEnvelope<T> {
@@ -33,6 +34,17 @@ export const platformApi = {
 
   async deleteOrganization(organizationId: string): Promise<void> {
     await apiClient.delete(`/platform/organizations/${organizationId}`);
+  },
+
+  async updateOrganizationStatus(organizationId: string, isActive: boolean): Promise<void> {
+    await apiClient.patch(`/platform/organizations/${organizationId}/status`, { isActive });
+  },
+
+  async updateOrganizationSubscription(
+    organizationId: string,
+    payload: UpdateOrganizationSubscriptionPayload
+  ): Promise<void> {
+    await apiClient.patch(`/platform/organizations/${organizationId}/subscription`, payload);
   },
 
   async getOrganizationSettings(organizationId: string): Promise<OrganizationSettingsResponse> {

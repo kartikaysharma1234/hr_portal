@@ -24,7 +24,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 const buildAuthPayload = (params: {
   userId: string;
   organizationId: string;
-  role: 'super_admin' | 'admin' | 'manager' | 'employee';
+  role: 'super_admin' | 'admin' | 'hr' | 'manager' | 'employee';
   email: string;
 }): AuthTokenPayload => {
   return {
@@ -58,7 +58,7 @@ const mapUserForResponse = (user: {
   _id: unknown;
   name: string;
   email: string;
-  role: 'super_admin' | 'admin' | 'manager' | 'employee';
+  role: 'super_admin' | 'admin' | 'hr' | 'manager' | 'employee';
   emailVerified: boolean;
 }) => {
   return {
@@ -73,7 +73,7 @@ const mapUserForResponse = (user: {
 const issueAuthTokens = async (params: {
   userId: string;
   organizationId: string;
-  role: 'super_admin' | 'admin' | 'manager' | 'employee';
+  role: 'super_admin' | 'admin' | 'hr' | 'manager' | 'employee';
   email: string;
   req: Request;
 }): Promise<{ accessToken: string; refreshToken: string }> => {

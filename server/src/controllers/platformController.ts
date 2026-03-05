@@ -21,6 +21,7 @@ import { deepMerge, isRecord } from '../utils/objectMerge';
 const subdomainRegex = /^[a-z0-9-]{3,30}$/;
 const allowedLogoPrefixRegex = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/i;
 const maxLogoDataUrlBytes = 2 * 1024 * 1024;
+const subscriptionPlanValues = ['Free', 'Starter', 'Growth', 'Enterprise'] as const;
 
 const validateAndNormalizeLogo = (rawLogo: unknown): string => {
   const logoDataUrl = String(rawLogo ?? '').trim();
@@ -39,6 +40,45 @@ const validateAndNormalizeLogo = (rawLogo: unknown): string => {
   }
 
   return logoDataUrl;
+};
+
+const resolveSubscriptionSnapshot = (settingsRaw: unknown): {
+  currentPlan: string;
+  subscriptionStartDate: string;
+  subscriptionEndDate: string;
+  employeeLimit: number;
+} => {
+  const fallbackSettings = getDefaultOrganizationSettings();
+  const fallbackCompany = isRecord(fallbackSettings.company) ? fallbackSettings.company : {};
+  const fallbackSubscription = isRecord(fallbackCompany.subscriptionAndLicensing)
+    ? fallbackCompany.subscriptionAndLicensing
+    : {};
+
+  const settings = isRecord(settingsRaw) ? settingsRaw : {};
+  const company = isRecord(settings.company) ? settings.company : {};
+  const subscription = isRecord(company.subscriptionAndLicensing)
+    ? company.subscriptionAndLicensing
+    : {};
+
+  const currentPlan = String(
+    subscription.currentPlan ?? fallbackSubscription.currentPlan ?? 'Free'
+  ).trim();
+  const subscriptionStartDate = String(
+    subscription.subscriptionStartDate ?? fallbackSubscription.subscriptionStartDate ?? ''
+  ).trim();
+  const subscriptionEndDate = String(
+    subscription.subscriptionEndDate ?? fallbackSubscription.subscriptionEndDate ?? ''
+  ).trim();
+  const employeeLimit = Number(
+    subscription.employeeLimit ?? fallbackSubscription.employeeLimit ?? 0
+  );
+
+  return {
+    currentPlan,
+    subscriptionStartDate,
+    subscriptionEndDate,
+    employeeLimit: Number.isFinite(employeeLimit) && employeeLimit >= 0 ? employeeLimit : 0,
+  };
 };
 
 export const createOrganization = asyncHandler(async (req: Request, res: Response) => {
@@ -107,14 +147,21 @@ export const listOrganizations = asyncHandler(async (_req: Request, res: Respons
 
   res.json({
     success: true,
-    data: organizations.map((org) => ({
-      id: org._id,
-      name: org.name,
-      subdomain: org.subdomain,
-      isActive: org.isActive,
-      logoDataUrl: org.logoDataUrl ?? '',
-      createdAt: org.createdAt
-    }))
+    data: organizations.map((org) => {
+      const subscription = resolveSubscriptionSnapshot(org.settings);
+      return {
+        id: org._id,
+        name: org.name,
+        subdomain: org.subdomain,
+        isActive: org.isActive,
+        logoDataUrl: org.logoDataUrl ?? '',
+        createdAt: org.createdAt,
+        currentPlan: subscription.currentPlan,
+        subscriptionStartDate: subscription.subscriptionStartDate,
+        subscriptionEndDate: subscription.subscriptionEndDate,
+        employeeLimit: subscription.employeeLimit,
+      };
+    })
   });
 });
 
@@ -201,5 +248,162 @@ export const updateOrganizationSettings = asyncHandler(async (req: Request, res:
       id: organization._id,
       settings: organization.settings
     }
+  });
+});
+
+export const updateOrganizationStatus = asyncHandler(async (req: Request, res: Response) => {
+  const organizationId = String(req.params.id ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
+    throw createHttpError(400, 'Invalid organization id');
+  }
+
+  const { isActive } = req.body;
+  if (typeof isActive !== 'boolean') {
+    throw createHttpError(400, 'isActive must be boolean');
+  }
+
+  const organization = await OrganizationModel.findById(organizationId).exec();
+  if (!organization) {
+    throw createHttpError(404, 'Organization not found');
+  }
+
+  organization.isActive = isActive;
+  await organization.save();
+
+  res.json({
+    success: true,
+    message: isActive
+      ? `Organization "${organization.name}" approved and enabled`
+      : `Organization "${organization.name}" disabled`,
+    data: {
+      id: organization._id,
+      name: organization.name,
+      isActive: organization.isActive,
+    },
+  });
+});
+
+export const updateOrganizationSubscription = asyncHandler(async (req: Request, res: Response) => {
+  const organizationId = String(req.params.id ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
+    throw createHttpError(400, 'Invalid organization id');
+  }
+
+  const organization = await OrganizationModel.findById(organizationId).exec();
+  if (!organization) {
+    throw createHttpError(404, 'Organization not found');
+  }
+
+  const patch: Record<string, unknown> = {};
+
+  if (req.body.currentPlan !== undefined) {
+    const currentPlan = String(req.body.currentPlan).trim();
+    if (!(subscriptionPlanValues as readonly string[]).includes(currentPlan)) {
+      throw createHttpError(400, 'currentPlan must be Free/Starter/Growth/Enterprise');
+    }
+    patch.currentPlan = currentPlan;
+  }
+
+  if (req.body.subscriptionStartDate !== undefined) {
+    patch.subscriptionStartDate = String(req.body.subscriptionStartDate).trim();
+  }
+
+  if (req.body.subscriptionEndDate !== undefined) {
+    patch.subscriptionEndDate = String(req.body.subscriptionEndDate).trim();
+  }
+
+  if (req.body.employeeLimit !== undefined) {
+    const employeeLimit = Number(req.body.employeeLimit);
+    if (!Number.isFinite(employeeLimit) || employeeLimit < 0) {
+      throw createHttpError(400, 'employeeLimit must be a non-negative number');
+    }
+    patch.employeeLimit = employeeLimit;
+  }
+
+  if (!Object.keys(patch).length) {
+    throw createHttpError(
+      400,
+      'At least one field is required: currentPlan/subscriptionStartDate/subscriptionEndDate/employeeLimit'
+    );
+  }
+
+  const currentSettings = isRecord(organization.settings)
+    ? (organization.settings as Record<string, unknown>)
+    : getDefaultOrganizationSettings();
+
+  organization.settings = deepMerge(currentSettings, {
+    company: {
+      subscriptionAndLicensing: patch,
+    },
+  });
+
+  await organization.save();
+
+  const subscription = resolveSubscriptionSnapshot(organization.settings);
+  res.json({
+    success: true,
+    message: 'Organization subscription updated successfully',
+    data: {
+      id: organization._id,
+      ...subscription,
+    },
+  });
+});
+
+export const getOrganizationOverview = asyncHandler(async (req: Request, res: Response) => {
+  const organizationId = String(req.params.id ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
+    throw createHttpError(400, 'Invalid organization id');
+  }
+
+  const [organization, userCount, activeUserCount, employeeCount, roleBreakdown] =
+    await Promise.all([
+      OrganizationModel.findById(organizationId).lean(),
+      UserModel.countDocuments({ organization: organizationId }),
+      UserModel.countDocuments({ organization: organizationId, isActive: true }),
+      EmployeeModel.countDocuments({ organization: organizationId }),
+      UserModel.aggregate<{ _id: string; count: number }>([
+        { $match: { organization: new mongoose.Types.ObjectId(organizationId) } },
+        { $group: { _id: '$role', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+  if (!organization) {
+    throw createHttpError(404, 'Organization not found');
+  }
+
+  const roleCounts = {
+    admin: 0,
+    hr: 0,
+    manager: 0,
+    employee: 0,
+  };
+
+  for (const row of roleBreakdown) {
+    if (row._id in roleCounts) {
+      roleCounts[row._id as keyof typeof roleCounts] = row.count;
+    }
+  }
+
+  const subscription = resolveSubscriptionSnapshot(organization.settings);
+
+  res.json({
+    success: true,
+    data: {
+      id: organization._id,
+      name: organization.name,
+      subdomain: organization.subdomain,
+      isActive: organization.isActive,
+      currentPlan: subscription.currentPlan,
+      subscriptionStartDate: subscription.subscriptionStartDate,
+      subscriptionEndDate: subscription.subscriptionEndDate,
+      employeeLimit: subscription.employeeLimit,
+      metrics: {
+        totalUsers: userCount,
+        activeUsers: activeUserCount,
+        employees: employeeCount,
+      },
+      roleCounts,
+    },
   });
 });

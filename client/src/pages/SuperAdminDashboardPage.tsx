@@ -16,6 +16,8 @@ const emptyOrgForm: CreateOrganizationPayload = {
   logoDataUrl: ''
 };
 
+const subscriptionPlanOptions = ['Free', 'Starter', 'Growth', 'Enterprise'] as const;
+
 export const SuperAdminDashboardPage = (): JSX.Element => {
   const navigate = useNavigate();
   const token = useMemo(() => getPlatformToken(), []);
@@ -25,6 +27,9 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
+  const [statusUpdatingOrgId, setStatusUpdatingOrgId] = useState<string | null>(null);
+  const [planUpdatingOrgId, setPlanUpdatingOrgId] = useState<string | null>(null);
+  const [planDraftByOrgId, setPlanDraftByOrgId] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -42,6 +47,12 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
       try {
         const data = await platformApi.listOrganizations();
         setOrganizations(data);
+        setPlanDraftByOrgId(
+          data.reduce<Record<string, string>>((acc, org) => {
+            acc[org.id] = org.currentPlan;
+            return acc;
+          }, {})
+        );
       } catch {
         setError('Unable to fetch organizations');
       } finally {
@@ -73,6 +84,12 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
       setOrgForm(emptyOrgForm);
       const data = await platformApi.listOrganizations();
       setOrganizations(data);
+      setPlanDraftByOrgId(
+        data.reduce<Record<string, string>>((acc, org) => {
+          acc[org.id] = org.currentPlan;
+          return acc;
+        }, {})
+      );
       setSuccess('Organization created successfully.');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string } } };
@@ -123,11 +140,71 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
       await platformApi.deleteOrganization(organizationId);
       const data = await platformApi.listOrganizations();
       setOrganizations(data);
+      setPlanDraftByOrgId(
+        data.reduce<Record<string, string>>((acc, org) => {
+          acc[org.id] = org.currentPlan;
+          return acc;
+        }, {})
+      );
       setSuccess(`Organization "${organizationName}" deleted successfully.`);
     } catch {
       setError('Unable to delete organization. Please try again.');
     } finally {
       setDeletingOrgId(null);
+    }
+  };
+
+  const onToggleOrganizationStatus = async (organization: OrganizationSummary): Promise<void> => {
+    setError(null);
+    setSuccess(null);
+    setStatusUpdatingOrgId(organization.id);
+    try {
+      await platformApi.updateOrganizationStatus(organization.id, !organization.isActive);
+      const data = await platformApi.listOrganizations();
+      setOrganizations(data);
+      setPlanDraftByOrgId(
+        data.reduce<Record<string, string>>((acc, org) => {
+          acc[org.id] = org.currentPlan;
+          return acc;
+        }, {})
+      );
+      setSuccess(
+        !organization.isActive
+          ? `Organization "${organization.name}" approved and enabled.`
+          : `Organization "${organization.name}" disabled.`
+      );
+    } catch {
+      setError('Unable to update organization status.');
+    } finally {
+      setStatusUpdatingOrgId(null);
+    }
+  };
+
+  const onSaveSubscriptionPlan = async (organization: OrganizationSummary): Promise<void> => {
+    const nextPlan = (planDraftByOrgId[organization.id] ?? organization.currentPlan) as
+      | 'Free'
+      | 'Starter'
+      | 'Growth'
+      | 'Enterprise';
+
+    setError(null);
+    setSuccess(null);
+    setPlanUpdatingOrgId(organization.id);
+    try {
+      await platformApi.updateOrganizationSubscription(organization.id, { currentPlan: nextPlan });
+      const data = await platformApi.listOrganizations();
+      setOrganizations(data);
+      setPlanDraftByOrgId(
+        data.reduce<Record<string, string>>((acc, org) => {
+          acc[org.id] = org.currentPlan;
+          return acc;
+        }, {})
+      );
+      setSuccess(`Subscription plan updated for "${organization.name}".`);
+    } catch {
+      setError('Unable to update subscription plan.');
+    } finally {
+      setPlanUpdatingOrgId(null);
     }
   };
 
@@ -318,6 +395,38 @@ export const SuperAdminDashboardPage = (): JSX.Element => {
                     <span className={org.isActive ? 'sa-status active' : 'sa-status inactive'}>
                       {org.isActive ? 'Active' : 'Inactive'}
                     </span>
+                    <span className="sa-status">{org.currentPlan} Plan</span>
+                    <select
+                      value={planDraftByOrgId[org.id] ?? org.currentPlan}
+                      onChange={(event) =>
+                        setPlanDraftByOrgId((prev) => ({ ...prev, [org.id]: event.target.value }))
+                      }
+                      disabled={planUpdatingOrgId === org.id}
+                    >
+                      {subscriptionPlanOptions.map((plan) => (
+                        <option key={plan} value={plan}>
+                          {plan}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void onSaveSubscriptionPlan(org)}
+                      disabled={planUpdatingOrgId === org.id}
+                    >
+                      {planUpdatingOrgId === org.id ? 'Saving Plan...' : 'Save Plan'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onToggleOrganizationStatus(org)}
+                      disabled={statusUpdatingOrgId === org.id}
+                    >
+                      {statusUpdatingOrgId === org.id
+                        ? 'Updating...'
+                        : org.isActive
+                        ? 'Disable'
+                        : 'Approve'}
+                    </button>
                     <Link to={`/super-admin/organizations/${org.id}/settings`} className="sa-settings-org-link">
                       Settings
                     </Link>

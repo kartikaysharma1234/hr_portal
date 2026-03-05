@@ -30,7 +30,11 @@ export const AttendanceWorkspacePage = (): JSX.Element => {
     }
   };
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager';
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.role === 'super_admin' ||
+    user?.role === 'hr' ||
+    user?.role === 'manager';
 
   return (
     <main className="attendance-workspace-shell">

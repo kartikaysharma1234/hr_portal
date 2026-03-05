@@ -1,6 +1,6 @@
 import { Schema, model, type InferSchemaType } from 'mongoose';
 
-const roleValues = ['super_admin', 'admin', 'manager', 'employee'] as const;
+const roleValues = ['super_admin', 'admin', 'hr', 'manager', 'employee'] as const;
 const authProviderValues = ['local', 'google'] as const;
 
 const userSchema = new Schema(

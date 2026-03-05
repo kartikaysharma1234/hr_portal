@@ -19,6 +19,10 @@ export interface OrganizationSummary {
   isActive: boolean;
   logoDataUrl?: string;
   createdAt: string;
+  currentPlan: string;
+  subscriptionStartDate: string;
+  subscriptionEndDate: string;
+  employeeLimit: number;
 }
 
 export interface OrganizationSettingsResponse {
@@ -36,4 +40,11 @@ export interface CreateOrganizationPayload {
   adminEmail: string;
   adminPassword: string;
   logoDataUrl?: string;
+}
+
+export interface UpdateOrganizationSubscriptionPayload {
+  currentPlan?: 'Free' | 'Starter' | 'Growth' | 'Enterprise';
+  subscriptionStartDate?: string;
+  subscriptionEndDate?: string;
+  employeeLimit?: number;
 }

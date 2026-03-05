@@ -14,10 +14,10 @@ const employeesRouter = Router();
 
 employeesRouter.use(resolveTenant, requireAuth);
 
-employeesRouter.get('/', requireRoles('admin', 'manager'), listEmployees);
-employeesRouter.get('/:id', requireRoles('admin', 'manager'), getEmployeeById);
-employeesRouter.post('/', requireRoles('admin'), createEmployee);
-employeesRouter.put('/:id', requireRoles('admin', 'manager'), updateEmployee);
+employeesRouter.get('/', requireRoles('admin', 'hr', 'manager'), listEmployees);
+employeesRouter.get('/:id', requireRoles('admin', 'hr', 'manager'), getEmployeeById);
+employeesRouter.post('/', requireRoles('admin', 'hr'), createEmployee);
+employeesRouter.put('/:id', requireRoles('admin', 'hr', 'manager'), updateEmployee);
 employeesRouter.delete('/:id', requireRoles('admin'), deleteEmployee);
 
 export { employeesRouter };

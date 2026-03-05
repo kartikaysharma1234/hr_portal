@@ -42,8 +42,8 @@ import {
 import { emitLivePunchEvent, emitOccupancyEvent } from '../services/attendance/realtimeService';
 import type { PunchSource, PunchType } from '../types/attendance';
 
-const attendanceAdminRoles = new Set(['super_admin', 'admin']);
-const attendanceApproverRoles = new Set(['super_admin', 'admin', 'manager']);
+const attendanceAdminRoles = new Set(['super_admin', 'admin', 'hr']);
+const attendanceApproverRoles = new Set(['super_admin', 'admin', 'hr', 'manager']);
 const leaveTypeValues = ['PL', 'CL', 'SL', 'OH'] as const;
 type LeaveTypeCode = (typeof leaveTypeValues)[number];
 
@@ -292,7 +292,7 @@ const resolveLedgerEmployee = async (params: {
     }
 
     if (!canManageLeaveLedger(params.req)) {
-      throw createHttpError(403, 'Only manager/admin can select employeeId');
+      throw createHttpError(403, 'Only manager/hr/admin can select employeeId');
     }
 
     const employeeById = await EmployeeModel.findOne({
@@ -410,13 +410,13 @@ const requireTenantAndUser = (req: Request): { organizationId: string; userId: s
 
 const requireAdminRole = (req: Request): void => {
   if (!req.user || !attendanceAdminRoles.has(req.user.role)) {
-    throw createHttpError(403, 'Only admin/super admin can perform this action');
+    throw createHttpError(403, 'Only hr/admin/super admin can perform this action');
   }
 };
 
 const requireApproverRole = (req: Request): void => {
   if (!req.user || !attendanceApproverRoles.has(req.user.role)) {
-    throw createHttpError(403, 'Only manager/admin can perform this action');
+    throw createHttpError(403, 'Only manager/hr/admin can perform this action');
   }
 };
 

@@ -208,7 +208,10 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
   const navigate = useNavigate();
   const { user } = useAuth();
   const isLedgerManager =
-    user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'manager';
+    user?.role === 'super_admin' ||
+    user?.role === 'admin' ||
+    user?.role === 'hr' ||
+    user?.role === 'manager';
 
   const now = new Date();
 
