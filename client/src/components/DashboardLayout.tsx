@@ -31,6 +31,7 @@ const myAttendanceItems = [
 
 export const DashboardLayout = (): JSX.Element => {
   const { user, logout } = useAuth();
+  const canManageUsers = user?.role === 'admin' || user?.role === 'super_admin';
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -95,6 +96,20 @@ export const DashboardLayout = (): JSX.Element => {
             <span className="ess-nav-icon">🏠</span>
             <span>Home</span>
           </NavLink>
+
+          {canManageUsers ? (
+            <NavLink
+              to="/org-users"
+              className={({ isActive }) =>
+                `ess-nav-link ${isActive ? 'ess-nav-link--active' : ''}`
+              }
+              onClick={() => setSidebarOpen(false)}
+            >
+              <span className="ess-nav-icon">UM</span>
+              <span>User Management</span>
+            </NavLink>
+          ) : null}
+
 
           {/* My Links — Collapsible */}
           <div className="ess-nav-group">

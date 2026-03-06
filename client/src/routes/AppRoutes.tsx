@@ -14,6 +14,7 @@ import { EmployeeProfilePage } from '../pages/EmployeeProfilePage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage';
 import { LoginPage } from '../pages/LoginPage';
+import { OrganizationUsersPage } from '../pages/OrganizationUsersPage';
 import { ProfileFamilyPage } from '../pages/ProfileFamilyPage';
 import { ProfilePersonalPage } from '../pages/ProfilePersonalPage';
 import {
@@ -95,6 +96,7 @@ export const AppRoutes = (): JSX.Element => {
           <Route path="/salary-slip" element={<SalarySlipPage />} />
           <Route path="/tax-declaration" element={<TaxDeclarationPage />} />
           <Route path="/tax-report" element={<TaxReportPage />} />
+          <Route path="/org-users" element={<OrganizationUsersPage />} />
           <Route path="/attendance" element={<Navigate to="/attendance/daily" replace />} />
           <Route path="/attendance/daily" element={<AttendanceDailyPage />} />
           <Route path="/attendance/monthly" element={<AttendanceMonthlyPage />} />
