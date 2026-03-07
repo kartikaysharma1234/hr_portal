@@ -46,4 +46,8 @@ export const usersApi = {
   async updateUserPunchWindow(userId: string, punchWindow: UserPunchWindow): Promise<void> {
     await apiClient.patch(`/users/${userId}/punch-window`, { punchWindow });
   },
+
+  async deleteUser(userId: string): Promise<void> {
+    await apiClient.delete(`/users/${userId}`);
+  },
 };

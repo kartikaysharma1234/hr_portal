@@ -313,3 +313,30 @@ export const updateUserPunchWindow = asyncHandler(async (req: Request, res: Resp
     data: mapUserRow(user)
   });
 });
+
+export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId, userId } = requireTenantAndAdmin(req);
+
+  const targetUserId = String(req.params.id ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+    throw createHttpError(400, 'Invalid user id');
+  }
+
+  if (targetUserId === userId) {
+    throw createHttpError(400, 'You cannot delete your own account');
+  }
+
+  const deleted = await UserModel.findOneAndDelete({
+    _id: targetUserId,
+    organization: organizationId
+  }).lean();
+
+  if (!deleted) {
+    throw createHttpError(404, 'User not found');
+  }
+
+  res.json({
+    success: true,
+    message: 'User deleted successfully'
+  });
+});

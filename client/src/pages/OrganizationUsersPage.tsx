@@ -28,6 +28,7 @@ export const OrganizationUsersPage = (): JSX.Element => {
   const [savingRoleByUserId, setSavingRoleByUserId] = useState<string | null>(null);
   const [savingStatusByUserId, setSavingStatusByUserId] = useState<string | null>(null);
   const [savingWindowByUserId, setSavingWindowByUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [roleDraftByUserId, setRoleDraftByUserId] = useState<Record<string, ManagedUserRole>>({});
   const [windowDraftByUserId, setWindowDraftByUserId] = useState<Record<string, UserPunchWindow>>({});
 
@@ -186,6 +187,26 @@ export const OrganizationUsersPage = (): JSX.Element => {
       setError(getApiErrorMessage(caught, 'Unable to update punch window'));
     } finally {
       setSavingWindowByUserId(null);
+    }
+  };
+
+  const onDeleteUser = async (row: OrganizationUserRow): Promise<void> => {
+    const shouldDelete = window.confirm(`Delete user "${row.name}" (${row.email})?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingUserId(row.id);
+    setError('');
+    setSuccess('');
+    try {
+      await usersApi.deleteUser(row.id);
+      setSuccess('User deleted successfully.');
+      await loadUsers();
+    } catch (caught) {
+      setError(getApiErrorMessage(caught, 'Unable to delete user'));
+    } finally {
+      setDeletingUserId(null);
     }
   };
 
@@ -423,7 +444,7 @@ export const OrganizationUsersPage = (): JSX.Element => {
                         onClick={() => void onSaveRole(row.id)}
                         disabled={savingRoleByUserId === row.id}
                       >
-                        {savingRoleByUserId === row.id ? 'Saving...' : 'Save Role'}
+                        {savingRoleByUserId === row.id ? 'Saving...' : 'Update Role'}
                       </button>
                       <button
                         type="button"
@@ -442,6 +463,14 @@ export const OrganizationUsersPage = (): JSX.Element => {
                         disabled={savingWindowByUserId === row.id}
                       >
                         {savingWindowByUserId === row.id ? 'Saving...' : 'Save Window'}
+                      </button>
+                      <button
+                        type="button"
+                        className="org-users-btn-danger"
+                        onClick={() => void onDeleteUser(row)}
+                        disabled={deletingUserId === row.id || user?.id === row.id}
+                      >
+                        {deletingUserId === row.id ? 'Deleting...' : 'Delete User'}
                       </button>
                     </td>
                   </tr>
