@@ -3,6 +3,7 @@ import type {
   PunchSource,
   PunchType,
   PunchValidationResult,
+  UserPunchWindow,
   ValidationStatus
 } from '../../types/attendance';
 import { getAttendanceColorIndicator } from '../../utils/attendanceColorUtils';
@@ -28,6 +29,7 @@ interface MainPunchValidationInput {
   device: DeviceInput;
   photo?: PhotoInput;
   holidayDates?: string[];
+  userPunchWindow?: UserPunchWindow | null;
 }
 
 export interface ValidationContext {
@@ -117,6 +119,7 @@ export const runMainPunchValidation = async (
     punchType: input.punchType,
     timestamp: input.punchTime,
     holidayDates: input.holidayDates,
+    userPunchWindow: input.userPunchWindow ?? null,
     timingRules: settings.settings.timingRules,
     punchRules: {
       minTimeBetweenPunchesMinutes: settings.settings.punchRules.minTimeBetweenPunchesMinutes,

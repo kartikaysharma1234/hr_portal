@@ -2,11 +2,17 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { usersApi } from '../api/usersApi';
 import { useAuth } from '../context/AuthContext';
-import type { ManagedUserRole, OrganizationUserRow } from '../types/userManagement';
+import type { ManagedUserRole, OrganizationUserRow, UserPunchWindow } from '../types/userManagement';
 import { getApiErrorMessage } from '../utils/apiError';
 import '../styles/org_users.css';
 
 const roleOptions: ManagedUserRole[] = ['admin', 'hr', 'manager', 'employee'];
+const defaultPunchWindow: UserPunchWindow = {
+  punchInStartTime: '09:00',
+  punchInEndTime: '10:00',
+  punchOutStartTime: '17:00',
+  punchOutEndTime: '19:00',
+};
 
 export const OrganizationUsersPage = (): JSX.Element => {
   const { user } = useAuth();
@@ -21,12 +27,18 @@ export const OrganizationUsersPage = (): JSX.Element => {
   const [statusFilter, setStatusFilter] = useState<'true' | 'false' | ''>('');
   const [savingRoleByUserId, setSavingRoleByUserId] = useState<string | null>(null);
   const [savingStatusByUserId, setSavingStatusByUserId] = useState<string | null>(null);
+  const [savingWindowByUserId, setSavingWindowByUserId] = useState<string | null>(null);
   const [roleDraftByUserId, setRoleDraftByUserId] = useState<Record<string, ManagedUserRole>>({});
+  const [windowDraftByUserId, setWindowDraftByUserId] = useState<Record<string, UserPunchWindow>>({});
 
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState<ManagedUserRole>('employee');
+  const [formPunchInStartTime, setFormPunchInStartTime] = useState(defaultPunchWindow.punchInStartTime);
+  const [formPunchInEndTime, setFormPunchInEndTime] = useState(defaultPunchWindow.punchInEndTime);
+  const [formPunchOutStartTime, setFormPunchOutStartTime] = useState(defaultPunchWindow.punchOutStartTime);
+  const [formPunchOutEndTime, setFormPunchOutEndTime] = useState(defaultPunchWindow.punchOutEndTime);
   const [creating, setCreating] = useState(false);
 
   const rowCountLabel = useMemo(() => `${rows.length} user${rows.length === 1 ? '' : 's'}`, [rows]);
@@ -45,6 +57,17 @@ export const OrganizationUsersPage = (): JSX.Element => {
       setRoleDraftByUserId(
         users.reduce<Record<string, ManagedUserRole>>((acc, row) => {
           acc[row.id] = row.role;
+          return acc;
+        }, {})
+      );
+      setWindowDraftByUserId(
+        users.reduce<Record<string, UserPunchWindow>>((acc, row) => {
+          acc[row.id] = {
+            punchInStartTime: row.punchWindow.punchInStartTime,
+            punchInEndTime: row.punchWindow.punchInEndTime,
+            punchOutStartTime: row.punchWindow.punchOutStartTime,
+            punchOutEndTime: row.punchWindow.punchOutEndTime,
+          };
           return acc;
         }, {})
       );
@@ -87,11 +110,21 @@ export const OrganizationUsersPage = (): JSX.Element => {
         email: formEmail.trim().toLowerCase(),
         password: formPassword,
         role: formRole,
+        punchWindow: {
+          punchInStartTime: formPunchInStartTime,
+          punchInEndTime: formPunchInEndTime,
+          punchOutStartTime: formPunchOutStartTime,
+          punchOutEndTime: formPunchOutEndTime,
+        },
       });
       setFormName('');
       setFormEmail('');
       setFormPassword('');
       setFormRole('employee');
+      setFormPunchInStartTime(defaultPunchWindow.punchInStartTime);
+      setFormPunchInEndTime(defaultPunchWindow.punchInEndTime);
+      setFormPunchOutStartTime(defaultPunchWindow.punchOutStartTime);
+      setFormPunchOutEndTime(defaultPunchWindow.punchOutEndTime);
       setSuccess('User created successfully.');
       await loadUsers();
     } catch (caught) {
@@ -133,6 +166,26 @@ export const OrganizationUsersPage = (): JSX.Element => {
       setError(getApiErrorMessage(caught, 'Unable to update user status'));
     } finally {
       setSavingStatusByUserId(null);
+    }
+  };
+
+  const onSavePunchWindow = async (targetUserId: string): Promise<void> => {
+    const draftWindow = windowDraftByUserId[targetUserId];
+    if (!draftWindow) {
+      return;
+    }
+
+    setSavingWindowByUserId(targetUserId);
+    setError('');
+    setSuccess('');
+    try {
+      await usersApi.updateUserPunchWindow(targetUserId, draftWindow);
+      setSuccess('Punch window updated successfully.');
+      await loadUsers();
+    } catch (caught) {
+      setError(getApiErrorMessage(caught, 'Unable to update punch window'));
+    } finally {
+      setSavingWindowByUserId(null);
     }
   };
 
@@ -181,6 +234,42 @@ export const OrganizationUsersPage = (): JSX.Element => {
               </option>
             ))}
           </select>
+          <div className="org-users-window-inputs">
+            <label>
+              <span className="org-users-window-tag">IN</span>
+              <div>
+                <input
+                  type="time"
+                  value={formPunchInStartTime}
+                  onChange={(event) => setFormPunchInStartTime(event.target.value)}
+                  required
+                />
+                <input
+                  type="time"
+                  value={formPunchInEndTime}
+                  onChange={(event) => setFormPunchInEndTime(event.target.value)}
+                  required
+                />
+              </div>
+            </label>
+            <label>
+              <span className="org-users-window-tag">OUT</span>
+              <div>
+                <input
+                  type="time"
+                  value={formPunchOutStartTime}
+                  onChange={(event) => setFormPunchOutStartTime(event.target.value)}
+                  required
+                />
+                <input
+                  type="time"
+                  value={formPunchOutEndTime}
+                  onChange={(event) => setFormPunchOutEndTime(event.target.value)}
+                  required
+                />
+              </div>
+            </label>
+          </div>
           <button type="submit" disabled={creating}>
             {creating ? 'Creating...' : 'Create User'}
           </button>
@@ -233,6 +322,7 @@ export const OrganizationUsersPage = (): JSX.Element => {
                   <th>Status</th>
                   <th>Provider</th>
                   <th>Email Verified</th>
+                  <th>Punch Window</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -265,6 +355,68 @@ export const OrganizationUsersPage = (): JSX.Element => {
                     </td>
                     <td>{row.authProvider}</td>
                     <td>{row.emailVerified ? 'Yes' : 'No'}</td>
+                    <td>
+                      <div className="org-users-window-edit">
+                        <label>
+                          <span className="org-users-window-tag">IN</span>
+                          <input
+                            type="time"
+                            value={windowDraftByUserId[row.id]?.punchInStartTime ?? row.punchWindow.punchInStartTime}
+                            onChange={(event) =>
+                              setWindowDraftByUserId((prev) => ({
+                                ...prev,
+                                [row.id]: {
+                                  ...(prev[row.id] ?? row.punchWindow),
+                                  punchInStartTime: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                          <input
+                            type="time"
+                            value={windowDraftByUserId[row.id]?.punchInEndTime ?? row.punchWindow.punchInEndTime}
+                            onChange={(event) =>
+                              setWindowDraftByUserId((prev) => ({
+                                ...prev,
+                                [row.id]: {
+                                  ...(prev[row.id] ?? row.punchWindow),
+                                  punchInEndTime: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span className="org-users-window-tag">OUT</span>
+                          <input
+                            type="time"
+                            value={windowDraftByUserId[row.id]?.punchOutStartTime ?? row.punchWindow.punchOutStartTime}
+                            onChange={(event) =>
+                              setWindowDraftByUserId((prev) => ({
+                                ...prev,
+                                [row.id]: {
+                                  ...(prev[row.id] ?? row.punchWindow),
+                                  punchOutStartTime: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                          <input
+                            type="time"
+                            value={windowDraftByUserId[row.id]?.punchOutEndTime ?? row.punchWindow.punchOutEndTime}
+                            onChange={(event) =>
+                              setWindowDraftByUserId((prev) => ({
+                                ...prev,
+                                [row.id]: {
+                                  ...(prev[row.id] ?? row.punchWindow),
+                                  punchOutEndTime: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    </td>
                     <td className="org-users-actions">
                       <button
                         type="button"
@@ -284,12 +436,19 @@ export const OrganizationUsersPage = (): JSX.Element => {
                           ? 'Disable'
                           : 'Enable'}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void onSavePunchWindow(row.id)}
+                        disabled={savingWindowByUserId === row.id}
+                      >
+                        {savingWindowByUserId === row.id ? 'Saving...' : 'Save Window'}
+                      </button>
                     </td>
                   </tr>
                 ))}
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="org-users-empty">
+                    <td colSpan={8} className="org-users-empty">
                       No users found.
                     </td>
                   </tr>

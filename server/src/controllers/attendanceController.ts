@@ -13,7 +13,7 @@ import { OrganizationModel } from '../models/Organization';
 import { UserModel } from '../models/User';
 import { asyncHandler } from '../utils/asyncHandler';
 import { getDefaultAttendanceSettings } from '../config/defaultAttendanceSettings';
-import { calculateWorkingHours, getDayRange, getMonthRange } from '../utils/dateTimeUtils';
+import { calculateWorkingHours, getDayRange, getMonthRange, parseHHmm } from '../utils/dateTimeUtils';
 import { exportRows, type ExportFormat } from '../utils/exportUtils';
 import { dispatchAttendanceNotification } from '../services/attendance/attendanceNotificationService';
 import { getAttendanceColorIndicator } from '../utils/attendanceColorUtils';
@@ -61,8 +61,68 @@ const monthlyCreditFallbacks: Record<LeaveTypeCode, number> = {
   OH: 0
 };
 
+const defaultUserPunchWindow = {
+  punchInStartTime: '09:00',
+  punchInEndTime: '10:00',
+  punchOutStartTime: '17:00',
+  punchOutEndTime: '19:00'
+} as const;
+
+type UserPunchWindow = {
+  punchInStartTime: string;
+  punchInEndTime: string;
+  punchOutStartTime: string;
+  punchOutEndTime: string;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+};
+
+const normalizeUserPunchWindow = (rawWindow: unknown): UserPunchWindow => {
+  const source = isRecord(rawWindow) ? rawWindow : {};
+
+  const punchInStartTime = String(source.punchInStartTime ?? defaultUserPunchWindow.punchInStartTime)
+    .trim()
+    .slice(0, 5);
+  const punchInEndTime = String(source.punchInEndTime ?? defaultUserPunchWindow.punchInEndTime)
+    .trim()
+    .slice(0, 5);
+  const punchOutStartTime = String(source.punchOutStartTime ?? defaultUserPunchWindow.punchOutStartTime)
+    .trim()
+    .slice(0, 5);
+  const punchOutEndTime = String(source.punchOutEndTime ?? defaultUserPunchWindow.punchOutEndTime)
+    .trim()
+    .slice(0, 5);
+
+  try {
+    const inStartMinutes = parseHHmm(punchInStartTime);
+    const inEndMinutes = parseHHmm(punchInEndTime);
+    const outStartMinutes = parseHHmm(punchOutStartTime);
+    const outEndMinutes = parseHHmm(punchOutEndTime);
+
+    const inStartTotal = inStartMinutes.hour * 60 + inStartMinutes.minute;
+    const inEndTotal = inEndMinutes.hour * 60 + inEndMinutes.minute;
+    const outStartTotal = outStartMinutes.hour * 60 + outStartMinutes.minute;
+    const outEndTotal = outEndMinutes.hour * 60 + outEndMinutes.minute;
+
+    if (inStartTotal >= inEndTotal || outStartTotal >= outEndTotal) {
+      return {
+        ...defaultUserPunchWindow
+      };
+    }
+  } catch {
+    return {
+      ...defaultUserPunchWindow
+    };
+  }
+
+  return {
+    punchInStartTime,
+    punchInEndTime,
+    punchOutStartTime,
+    punchOutEndTime
+  };
 };
 
 const pickFiniteNumber = (...values: unknown[]): number | null => {
@@ -420,6 +480,32 @@ const requireApproverRole = (req: Request): void => {
   }
 };
 
+const toWindowMinutes = (hhmm: string): number => {
+  const parsed = parseHHmm(hhmm);
+  return parsed.hour * 60 + parsed.minute;
+};
+
+const isCurrentTimeInWindow = (now: DateTime, startHHmm: string, endHHmm: string): boolean => {
+  const minuteOfDay = now.hour * 60 + now.minute;
+  const start = toWindowMinutes(startHHmm);
+  const end = toWindowMinutes(endHHmm);
+  return minuteOfDay >= start && minuteOfDay <= end;
+};
+
+const resolveUserPunchWindow = async (params: {
+  organizationId: string;
+  userId: string;
+}): Promise<UserPunchWindow> => {
+  const user = await UserModel.findOne({
+    _id: params.userId,
+    organization: params.organizationId
+  })
+    .select({ punchWindow: 1 })
+    .lean();
+
+  return normalizeUserPunchWindow(user?.punchWindow);
+};
+
 const getPhotoPayload = (
   body: Request['body']
 ): { url: string; mimeType: string; sizeBytes: number; capturedAt: Date | null } => {
@@ -543,6 +629,10 @@ const upsertPunch = async (params: {
 }> => {
   const { organizationId } = requireTenantAndUser(params.req);
   const employeeContext = await resolveEmployeeForAuthenticatedUser(params.req);
+  const userPunchWindow = await resolveUserPunchWindow({
+    organizationId,
+    userId: params.req.user?.sub ?? ''
+  });
 
   const parsed = parsePunchInput(params.req);
   if (parsed.punchType !== params.punchType) {
@@ -559,8 +649,19 @@ const upsertPunch = async (params: {
     source: parsed.source,
     location: parsed.location,
     device: parsed.device,
-    photo: parsed.photo
+    photo: parsed.photo,
+    userPunchWindow
   });
+
+  const outsideUserWindowReason = validationContext.result.time.reasons.find((item) =>
+    ['OUTSIDE_PUNCH_IN_WINDOW', 'OUTSIDE_PUNCH_OUT_WINDOW'].includes(item.code)
+  );
+
+  if (outsideUserWindowReason) {
+    throw createHttpError(422, outsideUserWindowReason.message, {
+      details: validationContext.result
+    });
+  }
 
   if (validationContext.result.blockPunch) {
     throw createHttpError(422, 'Punch blocked by attendance policy', {
@@ -945,6 +1046,11 @@ export const getDailyAttendanceDetail = asyncHandler(async (req: Request, res: R
 export const getMyAttendanceContext = asyncHandler(async (req: Request, res: Response) => {
   const { organizationId } = requireTenantAndUser(req);
   const employeeContext = await resolveEmployeeForAuthenticatedUser(req);
+  const effectiveSettings = await getEffectiveAttendanceSettings({
+    organizationId,
+    departmentId: employeeContext.department,
+    shiftCode: employeeContext.shiftCode
+  });
 
   const employeeDoc = await EmployeeModel.findOne({
     _id: employeeContext.employeeId,
@@ -955,6 +1061,13 @@ export const getMyAttendanceContext = asyncHandler(async (req: Request, res: Res
     throw createHttpError(404, 'Employee profile not found');
   }
 
+  const punchWindow = await resolveUserPunchWindow({
+    organizationId,
+    userId: req.user?.sub ?? ''
+  });
+  const timezone = effectiveSettings.settings.timingRules.timezone;
+  const now = DateTime.now().setZone(timezone);
+
   res.json({
     success: true,
     data: {
@@ -963,7 +1076,22 @@ export const getMyAttendanceContext = asyncHandler(async (req: Request, res: Res
       employeeName: `${employeeDoc.firstName} ${employeeDoc.lastName}`.trim(),
       department: employeeDoc.department || '',
       designation: employeeDoc.designation || '',
-      dateOfJoining: employeeDoc.dateOfJoining
+      dateOfJoining: employeeDoc.dateOfJoining,
+      punchWindow: {
+        ...punchWindow,
+        timezone,
+        currentLocalTime: now.toFormat('HH:mm'),
+        isPunchInAllowedNow: isCurrentTimeInWindow(
+          now,
+          punchWindow.punchInStartTime,
+          punchWindow.punchInEndTime
+        ),
+        isPunchOutAllowedNow: isCurrentTimeInWindow(
+          now,
+          punchWindow.punchOutStartTime,
+          punchWindow.punchOutEndTime
+        )
+      }
     }
   });
 });

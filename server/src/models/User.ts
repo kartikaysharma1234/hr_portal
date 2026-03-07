@@ -3,6 +3,32 @@ import { Schema, model, type InferSchemaType } from 'mongoose';
 const roleValues = ['super_admin', 'admin', 'hr', 'manager', 'employee'] as const;
 const authProviderValues = ['local', 'google'] as const;
 
+const punchWindowSchema = new Schema(
+  {
+    punchInStartTime: {
+      type: String,
+      default: '09:00',
+      trim: true
+    },
+    punchInEndTime: {
+      type: String,
+      default: '10:00',
+      trim: true
+    },
+    punchOutStartTime: {
+      type: String,
+      default: '17:00',
+      trim: true
+    },
+    punchOutEndTime: {
+      type: String,
+      default: '19:00',
+      trim: true
+    }
+  },
+  { _id: false }
+);
+
 const userSchema = new Schema(
   {
     organization: {
@@ -45,6 +71,10 @@ const userSchema = new Schema(
       type: String,
       enum: roleValues,
       default: 'employee'
+    },
+    punchWindow: {
+      type: punchWindowSchema,
+      default: () => ({})
     },
     isActive: {
       type: Boolean,

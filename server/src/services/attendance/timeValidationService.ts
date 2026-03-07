@@ -1,12 +1,18 @@
 import { DateTime } from 'luxon';
 
 import { AttendancePunchModel } from '../../models/AttendancePunch';
-import type { AttendanceValidationReason, PunchType, TimeValidationResult } from '../../types/attendance';
+import type {
+  AttendanceValidationReason,
+  PunchType,
+  TimeValidationResult,
+  UserPunchWindow
+} from '../../types/attendance';
 import {
   calculateLateEarlyMinutes,
   getDayRange,
   getShiftWindow,
   isHoliday,
+  parseHHmm,
   isWeekend,
   isWithinShiftWindow,
   toDateTimeInZone
@@ -41,6 +47,7 @@ interface TimeValidationInput {
     preventSequentialSamePunchType: boolean;
   };
   holidayDates?: string[];
+  userPunchWindow?: UserPunchWindow | null;
 }
 
 const reason = (
@@ -60,6 +67,47 @@ export const validatePunchTime = async (
   const window = getShiftWindow(localTs.toISO() as string, timezone, input.timingRules.shiftStartTime, input.timingRules.shiftEndTime);
 
   const reasons: AttendanceValidationReason[] = [];
+
+  if (input.userPunchWindow) {
+    const localMinute = localTs.hour * 60 + localTs.minute;
+    const inStart = parseHHmm(input.userPunchWindow.punchInStartTime);
+    const inEnd = parseHHmm(input.userPunchWindow.punchInEndTime);
+    const outStart = parseHHmm(input.userPunchWindow.punchOutStartTime);
+    const outEnd = parseHHmm(input.userPunchWindow.punchOutEndTime);
+
+    const inStartMinutes = inStart.hour * 60 + inStart.minute;
+    const inEndMinutes = inEnd.hour * 60 + inEnd.minute;
+    const outStartMinutes = outStart.hour * 60 + outStart.minute;
+    const outEndMinutes = outEnd.hour * 60 + outEnd.minute;
+
+    if (input.punchType === 'IN' && (localMinute < inStartMinutes || localMinute > inEndMinutes)) {
+      reasons.push(
+        reason(
+          'OUTSIDE_PUNCH_IN_WINDOW',
+          `Punch-in allowed between ${input.userPunchWindow.punchInStartTime} and ${input.userPunchWindow.punchInEndTime} (${timezone})`,
+          'invalid',
+          {
+            currentTime: localTs.toFormat('HH:mm'),
+            timezone
+          }
+        )
+      );
+    }
+
+    if (input.punchType === 'OUT' && (localMinute < outStartMinutes || localMinute > outEndMinutes)) {
+      reasons.push(
+        reason(
+          'OUTSIDE_PUNCH_OUT_WINDOW',
+          `Punch-out allowed between ${input.userPunchWindow.punchOutStartTime} and ${input.userPunchWindow.punchOutEndTime} (${timezone})`,
+          'invalid',
+          {
+            currentTime: localTs.toFormat('HH:mm'),
+            timezone
+          }
+        )
+      );
+    }
+  }
 
   const weekend = isWeekend(input.timestamp, timezone);
   if (weekend && !input.timingRules.weekendPunchAllowed) {

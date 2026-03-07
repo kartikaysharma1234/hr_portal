@@ -1,12 +1,26 @@
 import type { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import createHttpError from 'http-errors';
+import createHttpError, { isHttpError } from 'http-errors';
 import mongoose from 'mongoose';
 
 import { UserModel, type UserRole } from '../models/User';
 import { asyncHandler } from '../utils/asyncHandler';
+import { parseHHmm } from '../utils/dateTimeUtils';
 
 const managedRoleValues: UserRole[] = ['admin', 'hr', 'manager', 'employee'];
+const defaultPunchWindow = {
+  punchInStartTime: '09:00',
+  punchInEndTime: '10:00',
+  punchOutStartTime: '17:00',
+  punchOutEndTime: '19:00'
+} as const;
+
+type ManagedPunchWindow = {
+  punchInStartTime: string;
+  punchInEndTime: string;
+  punchOutStartTime: string;
+  punchOutEndTime: string;
+};
 
 const requireTenantAndAdmin = (req: Request): { organizationId: string; userId: string } => {
   if (!req.tenant) {
@@ -36,6 +50,64 @@ const normalizeRole = (rawRole: unknown): UserRole => {
   return role;
 };
 
+const toMinutesOfDay = (hhmm: string): number => {
+  const parsed = parseHHmm(hhmm);
+  return parsed.hour * 60 + parsed.minute;
+};
+
+const normalizePunchWindow = (rawWindow: unknown): ManagedPunchWindow => {
+  const source = typeof rawWindow === 'object' && rawWindow !== null ? rawWindow : {};
+
+  const punchInStartTime = String(
+    (source as Record<string, unknown>).punchInStartTime ?? defaultPunchWindow.punchInStartTime
+  )
+    .trim()
+    .slice(0, 5);
+  const punchInEndTime = String(
+    (source as Record<string, unknown>).punchInEndTime ?? defaultPunchWindow.punchInEndTime
+  )
+    .trim()
+    .slice(0, 5);
+  const punchOutStartTime = String(
+    (source as Record<string, unknown>).punchOutStartTime ?? defaultPunchWindow.punchOutStartTime
+  )
+    .trim()
+    .slice(0, 5);
+  const punchOutEndTime = String(
+    (source as Record<string, unknown>).punchOutEndTime ?? defaultPunchWindow.punchOutEndTime
+  )
+    .trim()
+    .slice(0, 5);
+
+  try {
+    const punchInStartMinutes = toMinutesOfDay(punchInStartTime);
+    const punchInEndMinutes = toMinutesOfDay(punchInEndTime);
+    const punchOutStartMinutes = toMinutesOfDay(punchOutStartTime);
+    const punchOutEndMinutes = toMinutesOfDay(punchOutEndTime);
+
+    if (punchInStartMinutes >= punchInEndMinutes) {
+      throw createHttpError(400, 'Punch-in window must have start time before end time');
+    }
+
+    if (punchOutStartMinutes >= punchOutEndMinutes) {
+      throw createHttpError(400, 'Punch-out window must have start time before end time');
+    }
+  } catch (error) {
+    if (isHttpError(error)) {
+      throw error;
+    }
+
+    throw createHttpError(400, 'Punch window time must be in HH:mm format');
+  }
+
+  return {
+    punchInStartTime,
+    punchInEndTime,
+    punchOutStartTime,
+    punchOutEndTime
+  };
+};
+
 const mapUserRow = (user: {
   _id: unknown;
   name: string;
@@ -44,6 +116,7 @@ const mapUserRow = (user: {
   isActive: boolean;
   authProvider: string;
   emailVerified: boolean;
+  punchWindow?: unknown;
   createdAt?: Date;
   updatedAt?: Date;
 }) => {
@@ -55,6 +128,7 @@ const mapUserRow = (user: {
     isActive: user.isActive,
     authProvider: user.authProvider,
     emailVerified: user.emailVerified,
+    punchWindow: normalizePunchWindow(user.punchWindow),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -106,6 +180,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
   const email = String(req.body.email ?? '').trim().toLowerCase();
   const password = String(req.body.password ?? '').trim();
   const role = normalizeRole(req.body.role);
+  const punchWindow = normalizePunchWindow(req.body.punchWindow);
 
   if (!name || !email || !password) {
     throw createHttpError(400, 'name, email, password and role are required');
@@ -133,6 +208,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
     role,
     authProvider: 'local',
     emailVerified: true,
+    punchWindow,
     isActive: true,
   });
 
@@ -208,5 +284,32 @@ export const updateUserStatus = asyncHandler(async (req: Request, res: Response)
     success: true,
     message: 'User status updated successfully',
     data: mapUserRow(user),
+  });
+});
+
+export const updateUserPunchWindow = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId } = requireTenantAndAdmin(req);
+
+  const targetUserId = String(req.params.id ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+    throw createHttpError(400, 'Invalid user id');
+  }
+
+  const user = await UserModel.findOne({
+    _id: targetUserId,
+    organization: organizationId
+  }).exec();
+
+  if (!user) {
+    throw createHttpError(404, 'User not found');
+  }
+
+  user.punchWindow = normalizePunchWindow(req.body.punchWindow);
+  await user.save();
+
+  res.json({
+    success: true,
+    message: 'User punch window updated successfully',
+    data: mapUserRow(user)
   });
 });

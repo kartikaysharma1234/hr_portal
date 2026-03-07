@@ -201,6 +201,16 @@ export interface AttendanceProfileContext {
   department: string;
   designation: string;
   dateOfJoining: string;
+  punchWindow: {
+    punchInStartTime: string;
+    punchInEndTime: string;
+    punchOutStartTime: string;
+    punchOutEndTime: string;
+    timezone: string;
+    currentLocalTime: string;
+    isPunchInAllowedNow: boolean;
+    isPunchOutAllowedNow: boolean;
+  };
 }
 
 export type LeaveTypeCode = 'PL' | 'CL' | 'SL' | 'OH';

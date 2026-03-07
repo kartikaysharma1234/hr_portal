@@ -553,6 +553,11 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
 
   useEffect(() => {
     void loadContext();
+    const timer = window.setInterval(() => {
+      void loadContext();
+    }, 30000);
+
+    return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -728,6 +733,38 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
             Search
           </button>
         </div>
+
+        {context?.punchWindow ? (
+          <div className="attx-punch-window-board">
+            <p className="attx-punch-window-now">
+              Local Time ({context.punchWindow.timezone}): {context.punchWindow.currentLocalTime}
+            </p>
+            <div className="attx-punch-window-grid">
+              <article
+                className={`attx-punch-window-item ${
+                  context.punchWindow.isPunchInAllowedNow ? 'is-open' : 'is-closed'
+                }`}
+              >
+                <strong>Punch In</strong>
+                <span>
+                  {context.punchWindow.punchInStartTime} - {context.punchWindow.punchInEndTime}
+                </span>
+                <em>{context.punchWindow.isPunchInAllowedNow ? 'Allowed now' : 'Outside window'}</em>
+              </article>
+              <article
+                className={`attx-punch-window-item ${
+                  context.punchWindow.isPunchOutAllowedNow ? 'is-open' : 'is-closed'
+                }`}
+              >
+                <strong>Punch Out</strong>
+                <span>
+                  {context.punchWindow.punchOutStartTime} - {context.punchWindow.punchOutEndTime}
+                </span>
+                <em>{context.punchWindow.isPunchOutAllowedNow ? 'Allowed now' : 'Outside window'}</em>
+              </article>
+            </div>
+          </div>
+        ) : null}
       </section>
     );
   };

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   createUser,
   listUsers,
+  updateUserPunchWindow,
   updateUserRole,
   updateUserStatus,
 } from '../controllers/userManagementController';
@@ -16,6 +17,7 @@ usersRouter.use(resolveTenant, requireAuth, requireRoles('admin', 'super_admin')
 usersRouter.get('/', listUsers);
 usersRouter.post('/', createUser);
 usersRouter.patch('/:id/role', updateUserRole);
+usersRouter.patch('/:id/punch-window', updateUserPunchWindow);
 usersRouter.patch('/:id/status', updateUserStatus);
 
 export { usersRouter };

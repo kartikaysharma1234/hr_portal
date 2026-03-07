@@ -3,6 +3,7 @@ import type {
   CreateOrganizationUserPayload,
   ManagedUserRole,
   OrganizationUserRow,
+  UserPunchWindow,
 } from '../types/userManagement';
 
 interface ApiEnvelope<T> {
@@ -40,5 +41,9 @@ export const usersApi = {
 
   async updateUserStatus(userId: string, isActive: boolean): Promise<void> {
     await apiClient.patch(`/users/${userId}/status`, { isActive });
+  },
+
+  async updateUserPunchWindow(userId: string, punchWindow: UserPunchWindow): Promise<void> {
+    await apiClient.patch(`/users/${userId}/punch-window`, { punchWindow });
   },
 };

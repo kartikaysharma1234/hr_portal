@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+﻿import { useMemo, useRef, useState } from 'react';
 
 import { attendanceApi } from '../../api/attendanceApi';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 interface PunchButtonProps {
   type: 'IN' | 'OUT';
@@ -114,7 +115,7 @@ export const PunchButton = ({
       setStatusColor(response.colorHex);
       setSuccess(
         `${buttonLabel} successful (${response.status.toUpperCase()})${
-          response.workingHours ? ` � ${response.workingHours} hrs` : ''
+          response.workingHours ? ` • ${response.workingHours} hrs` : ''
         }`
       );
 
@@ -125,7 +126,10 @@ export const PunchButton = ({
         onSuccess();
       }
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Failed to punch attendance';
+      const message = getApiErrorMessage(
+        caught,
+        caught instanceof Error ? caught.message : 'Failed to punch attendance'
+      );
       setError(message);
     } finally {
       setIsLoading(false);
@@ -175,3 +179,4 @@ export const PunchButton = ({
     </div>
   );
 };
+

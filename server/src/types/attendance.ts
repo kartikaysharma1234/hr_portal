@@ -90,6 +90,13 @@ export interface TimingRules {
   holidayPunchAllowed: boolean;
 }
 
+export interface UserPunchWindow {
+  punchInStartTime: string;
+  punchInEndTime: string;
+  punchOutStartTime: string;
+  punchOutEndTime: string;
+}
+
 export interface PunchValidationRules {
   minTimeBetweenPunchesMinutes: number;
   maxPunchesPerDay: number;

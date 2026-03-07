@@ -1,5 +1,12 @@
 export type ManagedUserRole = 'admin' | 'hr' | 'manager' | 'employee';
 
+export interface UserPunchWindow {
+  punchInStartTime: string;
+  punchInEndTime: string;
+  punchOutStartTime: string;
+  punchOutEndTime: string;
+}
+
 export interface OrganizationUserRow {
   id: string;
   name: string;
@@ -8,6 +15,7 @@ export interface OrganizationUserRow {
   isActive: boolean;
   authProvider: 'local' | 'google';
   emailVerified: boolean;
+  punchWindow: UserPunchWindow;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -17,4 +25,5 @@ export interface CreateOrganizationUserPayload {
   email: string;
   password: string;
   role: ManagedUserRole;
+  punchWindow: UserPunchWindow;
 }
