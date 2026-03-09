@@ -11,7 +11,7 @@ const defaultPunchWindow: UserPunchWindow = {
   punchInStartTime: '09:00',
   punchInEndTime: '10:00',
   punchOutStartTime: '17:00',
-  punchOutEndTime: '19:00',
+  punchOutEndTime: '08:00',
 };
 
 export const OrganizationUsersPage = (): JSX.Element => {

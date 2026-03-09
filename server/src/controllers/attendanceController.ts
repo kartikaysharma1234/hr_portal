@@ -89,7 +89,7 @@ const defaultUserPunchWindow = {
   punchInStartTime: '09:00',
   punchInEndTime: '10:00',
   punchOutStartTime: '17:00',
-  punchOutEndTime: '19:00'
+  punchOutEndTime: '08:00'
 } as const;
 
 type UserPunchWindow = {
@@ -130,7 +130,8 @@ const normalizeUserPunchWindow = (rawWindow: unknown): UserPunchWindow => {
     const outStartTotal = outStartMinutes.hour * 60 + outStartMinutes.minute;
     const outEndTotal = outEndMinutes.hour * 60 + outEndMinutes.minute;
 
-    if (inStartTotal >= inEndTotal || outStartTotal >= outEndTotal) {
+    // IN window must remain same-day; OUT window can cross midnight (17:00 -> 08:00).
+    if (inStartTotal >= inEndTotal || outStartTotal === outEndTotal) {
       return {
         ...defaultUserPunchWindow
       };
@@ -765,7 +766,13 @@ const isCurrentTimeInWindow = (now: DateTime, startHHmm: string, endHHmm: string
   const minuteOfDay = now.hour * 60 + now.minute;
   const start = toWindowMinutes(startHHmm);
   const end = toWindowMinutes(endHHmm);
-  return minuteOfDay >= start && minuteOfDay <= end;
+
+  if (start <= end) {
+    return minuteOfDay >= start && minuteOfDay <= end;
+  }
+
+  // Cross-midnight window support, for example 17:00 -> 08:00.
+  return minuteOfDay >= start || minuteOfDay <= end;
 };
 
 const resolveUserPunchWindow = async (params: {

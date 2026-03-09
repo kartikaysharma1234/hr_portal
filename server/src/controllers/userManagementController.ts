@@ -12,7 +12,7 @@ const defaultPunchWindow = {
   punchInStartTime: '09:00',
   punchInEndTime: '10:00',
   punchOutStartTime: '17:00',
-  punchOutEndTime: '19:00'
+  punchOutEndTime: '08:00'
 } as const;
 
 type ManagedPunchWindow = {
@@ -89,8 +89,9 @@ const normalizePunchWindow = (rawWindow: unknown): ManagedPunchWindow => {
       throw createHttpError(400, 'Punch-in window must have start time before end time');
     }
 
-    if (punchOutStartMinutes >= punchOutEndMinutes) {
-      throw createHttpError(400, 'Punch-out window must have start time before end time');
+    // Punch-out can span midnight (for example: 17:00 to 08:00 next day).
+    if (punchOutStartMinutes === punchOutEndMinutes) {
+      throw createHttpError(400, 'Punch-out window start and end time cannot be the same');
     }
   } catch (error) {
     if (isHttpError(error)) {

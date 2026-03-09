@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { attendanceApi } from '../api/attendanceApi';
 import { useAuth } from '../context/AuthContext';
@@ -12,10 +12,11 @@ import type {
   AttendanceValidationReason,
   LeaveTypeCode,
 } from '../types/attendance';
+import type { LeaveRequestRecord } from '../types/leaveRequest';
 import '../styles/attendance_glossy.css';
 
 type AttendanceView = 'daily' | 'monthly' | 'yearly' | 'leave-ledger';
-type UiStatusCode = 'P' | 'A' | 'WO' | 'W' | 'I' | 'PA' | '-';
+type UiStatusCode = string;
 
 interface MyAttendancePageProps {
   view: AttendanceView;
@@ -33,7 +34,22 @@ interface MonthlyDisplayRow {
   status: UiStatusCode;
   late: string;
   early: string;
-  canRegularize: boolean;
+  canRegularizeSubmit: boolean;
+  regularizeBlockedReason: string;
+  weeklyHours: string;
+}
+
+interface YearlyDetailRow {
+  dateKey: string;
+  dayNumber: number;
+  weekday: string;
+  planned: string;
+  inTime: string;
+  outTime: string;
+  status: string;
+  totalHr: string;
+  late: string;
+  early: string;
 }
 
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -45,32 +61,244 @@ const leaveLabelByCode: Record<LeaveTypeCode, string> = {
   OH: 'Optional Holiday',
 };
 
-const statusClass: Record<UiStatusCode, string> = {
+const baseStatusClass: Record<string, string> = {
   P: 'attx-status--p',
   A: 'attx-status--a',
+  LWP: 'attx-status--a',
+  HDP: 'attx-status--a',
   WO: 'attx-status--wo',
   W: 'attx-status--w',
   I: 'attx-status--i',
   PA: 'attx-status--pa',
-  '-': '',
+  PL: 'attx-status--pl',
+  CL: 'attx-status--cl',
+  SL: 'attx-status--sl',
+  HSL: 'attx-status--hsl',
+  PH: 'attx-status--ph',
+  OH: 'attx-status--ph',
 };
 
-const leaveLegend = [
+const halfDayLeaveCodes = new Set(['HCL', 'HPL', 'HSL', 'HCO', 'HOD', 'HWFH', 'HDP', 'HTL']);
+
+const isHalfDayCode = (statusCode: string): boolean => {
+  const normalized = statusCode.trim().toUpperCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized.includes('+')) {
+    return true;
+  }
+
+  return halfDayLeaveCodes.has(normalized) || normalized.startsWith('H');
+};
+
+const getStatusClass = (statusCode: string): string => {
+  const normalized = statusCode.trim().toUpperCase();
+  if (!normalized || normalized === '-') {
+    return '';
+  }
+
+  if (baseStatusClass[normalized]) {
+    return baseStatusClass[normalized];
+  }
+
+  if (normalized.includes('+')) {
+    return 'attx-status--half-combo';
+  }
+
+  if (normalized === 'WFH') {
+    return 'attx-status--wfh';
+  }
+
+  if (normalized === 'OD') {
+    return 'attx-status--od';
+  }
+
+  if (normalized === 'COF') {
+    return 'attx-status--cof';
+  }
+
+  if (
+    normalized === 'SPL' ||
+    normalized === 'PTL' ||
+    normalized === 'TL' ||
+    normalized === 'ML' ||
+    normalized === 'EW'
+  ) {
+    return 'attx-status--leave-alt';
+  }
+
+  if (isHalfDayCode(normalized)) {
+    return 'attx-status--half-leave';
+  }
+
+  return 'attx-status--leave';
+};
+
+const yearlyStatusLegend = [
   ['Present', 'P'],
-  ['Absent', 'A'],
+  ['Absent / L.W.P', 'LWP'],
   ['Week Off', 'WO'],
   ['Warning', 'W'],
   ['Invalid', 'I'],
   ['Pending Approval', 'PA'],
+  ['Casual Leave', 'CL'],
+  ['Privilege Leave', 'PL'],
+  ['Maternity Leave', 'ML'],
+  ['Sick Leave', 'SL'],
+  ['Public Holiday', 'PH'],
+  ['Compensatory Off', 'COF'],
+  ['Outdoor Duty', 'OD'],
+  ['Optional Holiday', 'OH'],
+  ['Extra Working', 'EW'],
+  ['Paternity Leave', 'PTL'],
+  ['Work From Home', 'WFH'],
+  ['Trainee Leave', 'TL'],
+  ['Special Leave', 'SPL'],
+  ['Half Day Absent/LWP', 'HDP'],
+  ['Half Compensatory Off', 'HCO'],
 ];
 
-const regularizationLegend = [
-  ['Regularization Request', 'A.R.'],
-  ['Late Coming', 'L.C'],
-  ['Early Going', 'E.G'],
-  ['Working Hours', 'WHrs'],
-  ['Distance From Office', 'Meters'],
+const yearlyHalfDayLegend = [
+  ['Half Casual Leave', 'HCL'],
+  ['Half Privilege Leave', 'HPL'],
+  ['Half Sick Leave', 'HSL'],
+  ['Half Compensatory Off', 'HCO'],
+  ['Half Outdoor Duty', 'HOD'],
+  ['Half Trainee Leave', 'HTL'],
+  ['Half Work From Home', 'HWFH'],
+  ['Half PL + Half OD', 'HPL+HOD'],
+  ['Half CL + Half OD', 'HCL+HOD'],
+  ['Half SL + Half OD', 'HSL+HOD'],
+  ['Half CO + Half OD', 'HCO+HOD'],
+  ['Half PL + Half LWP', 'HPL+HDP'],
+  ['Half CL + Half LWP', 'HCL+HDP'],
+  ['Half SL + Half LWP', 'HSL+HDP'],
+  ['Half CO + Half LWP', 'HCO+HDP'],
+  ['Half Day LWP + Half OD', 'HDP+HOD'],
+  ['Half OD + Half OD', 'HOD+HOD'],
+  ['Half TL + Half OD', 'HTL+HOD'],
+  ['Half TL + Half LWP', 'HTL+HDP'],
+  ['Half PL + Half WFH', 'HPL+HWFH'],
+  ['Half CL + Half WFH', 'HCL+HWFH'],
+  ['Half SL + Half WFH', 'HSL+HWFH'],
+  ['Half CO + Half WFH', 'HCO+HWFH'],
+  ['Half LWP + Half WFH', 'HDP+HWFH'],
+  ['Half OD + Half WFH', 'HOD+HWFH'],
+  ['Half TL + Half WFH', 'HTL+HWFH'],
+  ['Half WFH + Half WFH', 'HWFH+HWFH'],
 ];
+
+const halfDayCodePriority = ['HPL', 'HCL', 'HSL', 'HCO', 'HTL', 'HDP', 'HOD', 'HWFH'] as const;
+
+const normalizeHalfDayCombo = (codes: string[]): string => {
+  const cleaned = codes.map((item) => item.trim().toUpperCase()).filter(Boolean);
+  if (!cleaned.length) {
+    return '';
+  }
+
+  if (cleaned.length >= 2 && cleaned[0] === cleaned[1]) {
+    return `${cleaned[0]}+${cleaned[1]}`;
+  }
+
+  const unique = Array.from(new Set(cleaned));
+  if (unique.length === 1) {
+    return unique[0];
+  }
+
+  const priorityOf = (code: string): number => {
+    const index = halfDayCodePriority.indexOf(code as (typeof halfDayCodePriority)[number]);
+    return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
+  };
+
+  const ordered = unique
+    .slice(0, 2)
+    .sort((left, right) => {
+      const leftPriority = priorityOf(left);
+      const rightPriority = priorityOf(right);
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+      return left.localeCompare(right);
+    });
+
+  return ordered.join('+');
+};
+
+const buildLeaveDateCodeMap = (params: {
+  rows: LeaveRequestRecord[];
+  year: number;
+}): Map<string, string> => {
+  const map = new Map<string, string>();
+  const yearStart = `${params.year}-01-01`;
+  const yearEnd = `${params.year}-12-31`;
+
+  const upsertHalfDayCode = (dateKey: string, leaveCode: string): void => {
+    const existing = map.get(dateKey);
+    if (!existing) {
+      map.set(dateKey, leaveCode);
+      return;
+    }
+
+    if (!isHalfDayCode(existing)) {
+      return;
+    }
+
+    const existingCodes = existing
+      .split('+')
+      .map((item) => item.trim().toUpperCase())
+      .filter(Boolean);
+
+    if (existingCodes.includes(leaveCode)) {
+      if (existingCodes.length === 1 && existingCodes[0] === leaveCode) {
+        map.set(dateKey, `${leaveCode}+${leaveCode}`);
+      }
+      return;
+    }
+
+    const merged = normalizeHalfDayCombo([...existingCodes, leaveCode]);
+    if (merged) {
+      map.set(dateKey, merged);
+    }
+  };
+
+  for (const row of params.rows) {
+    if (row.status !== 'approved') {
+      continue;
+    }
+
+    const leaveCode = String(row.leaveType ?? '').trim().toUpperCase();
+    if (!leaveCode) {
+      continue;
+    }
+
+    const start = parseIsoDate(row.fromDate);
+    const end = parseIsoDate(row.toDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      continue;
+    }
+
+    const isHalfDayLeave = row.durationType !== 'full_day' || isHalfDayCode(leaveCode);
+    let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const lastDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+    while (cursor <= lastDate) {
+      const dateKey = toIsoDate(cursor);
+      if (dateKey >= yearStart && dateKey <= yearEnd) {
+        if (isHalfDayLeave) {
+          upsertHalfDayCode(dateKey, leaveCode);
+        } else {
+          map.set(dateKey, leaveCode);
+        }
+      }
+
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+    }
+  }
+
+  return map;
+};
 
 const pad = (value: number): string => String(value).padStart(2, '0');
 
@@ -142,6 +370,39 @@ const formatTime = (value: string | null): string => {
   });
 };
 
+const formatMinutesAsHours = (value: number): string => {
+  const safe = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  const hours = Math.floor(safe / 60);
+  const minutes = safe % 60;
+  return `${pad(hours)}:${pad(minutes)}`;
+};
+
+const parseClockToMinutes = (value: string): number | null => {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours * 60 + minutes;
+};
+
+const calculateRegularizeWorkingHours = (inTime: string, outTime: string): string => {
+  const inMinutes = parseClockToMinutes(inTime);
+  const outMinutes = parseClockToMinutes(outTime);
+  if (inMinutes === null || outMinutes === null) {
+    return '00:00';
+  }
+
+  let duration = outMinutes - inMinutes;
+  if (duration < 0) {
+    duration += 24 * 60;
+  }
+
+  return formatMinutesAsHours(duration);
+};
+
 const formatDistanceKm = (meters: number | null): string => {
   if (meters === null || !Number.isFinite(meters)) {
     return '--';
@@ -157,6 +418,46 @@ const toUiStatusCode = (status?: string): UiStatusCode => {
   if (status === 'pending_approval') return 'PA';
   if (status === 'absent') return 'A';
   return '-';
+};
+
+const regularizeStatusLabelMap: Record<string, string> = {
+  P: 'Present',
+  A: 'Absent',
+  LWP: 'Absent / L.W.P',
+  WO: 'Weekly Off',
+  PH: 'Public Holiday',
+  OH: 'Optional Holiday',
+  W: 'Warning',
+  I: 'Invalid',
+  PA: 'Pending Approval',
+};
+
+const formatRegularizeMarkedAs = (statusCode: string): string => {
+  const normalized = statusCode.trim().toUpperCase();
+  if (!normalized || normalized === '-') {
+    return '-';
+  }
+
+  const label = regularizeStatusLabelMap[normalized] ?? normalized;
+  return `${label} (${normalized})`;
+};
+
+const toPlannedCode = (statusCode: string): string => {
+  const normalized = statusCode.trim().toUpperCase();
+  if (!normalized || normalized === '-') {
+    return '-';
+  }
+
+  const nonPlanned = new Set(['P', 'A', 'LWP', 'W', 'I', 'PA']);
+  if (nonPlanned.has(normalized)) {
+    return '-';
+  }
+
+  return normalized;
+};
+
+const toTimeOrZero = (value: string | null | undefined): string => {
+  return value ? formatTime(value) : '00:00';
 };
 
 const extractDurationFromReasons = (
@@ -181,12 +482,27 @@ const extractDurationFromReasons = (
   return `00:${pad(Math.max(0, Math.min(59, minutes)))}`;
 };
 
-const getMissingDayStatus = (date: Date): UiStatusCode => {
-  const today = new Date();
-  const normalizedToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const normalizeDateOnly = (date: Date): Date => {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+};
 
-  if (target > normalizedToday) {
+const isPastWorkingDay = (date: Date): boolean => {
+  const target = normalizeDateOnly(date);
+  const today = normalizeDateOnly(new Date());
+
+  if (target >= today) {
+    return false;
+  }
+
+  return target.getDay() !== 0 && target.getDay() !== 6;
+};
+
+const getMissingDayStatus = (date: Date): UiStatusCode => {
+  const normalizedToday = normalizeDateOnly(new Date());
+  const target = normalizeDateOnly(date);
+
+  // Missing attendance should become absent from the next day onward.
+  if (target >= normalizedToday) {
     return '-';
   }
 
@@ -206,6 +522,7 @@ const titleByView: Record<AttendanceView, string> = {
 
 export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isLedgerManager =
     user?.role === 'super_admin' ||
@@ -227,8 +544,15 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
   const [monthlyRows, setMonthlyRows] = useState<AttendanceHistoryRow[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
   const [monthlyError, setMonthlyError] = useState('');
+  const [monthlyDetailDate, setMonthlyDetailDate] = useState<string | null>(null);
+  const [monthlyDetail, setMonthlyDetail] = useState<AttendanceDailyDetail | null>(null);
+  const [monthlyDetailLoading, setMonthlyDetailLoading] = useState(false);
+  const [monthlyDetailError, setMonthlyDetailError] = useState('');
 
   const [regularizeDate, setRegularizeDate] = useState<string | null>(null);
+  const [regularizeType, setRegularizeType] = useState<'manual_correction' | 'missed_punch' | 'invalid_punch'>(
+    'manual_correction'
+  );
   const [regularizeInTime, setRegularizeInTime] = useState('09:30');
   const [regularizeOutTime, setRegularizeOutTime] = useState('18:00');
   const [regularizeReason, setRegularizeReason] = useState('');
@@ -238,6 +562,8 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
 
   const [yearlyYear, setYearlyYear] = useState(String(now.getFullYear()));
   const [yearlyRows, setYearlyRows] = useState<AttendanceHistoryRow[]>([]);
+  const [yearlyLeaveRows, setYearlyLeaveRows] = useState<LeaveRequestRecord[]>([]);
+  const [yearlySelectedMonth, setYearlySelectedMonth] = useState<number>(now.getMonth() + 1);
   const [yearlyLoading, setYearlyLoading] = useState(false);
   const [yearlyError, setYearlyError] = useState('');
   const [yearlyBalances, setYearlyBalances] = useState<Record<LeaveTypeCode, number>>({
@@ -361,6 +687,21 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
     }
   };
 
+  const loadMonthlyDetail = async (date: string): Promise<void> => {
+    setMonthlyDetailLoading(true);
+    setMonthlyDetailError('');
+
+    try {
+      const detail = await attendanceApi.getDailyDetail(date);
+      setMonthlyDetail(detail);
+    } catch (caught) {
+      setMonthlyDetail(null);
+      setMonthlyDetailError(caught instanceof Error ? caught.message : 'Failed to load day punches');
+    } finally {
+      setMonthlyDetailLoading(false);
+    }
+  };
+
   const loadYearly = async (yearValue: string): Promise<void> => {
     const year = Number(yearValue);
     if (!Number.isInteger(year)) {
@@ -372,14 +713,30 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
     setYearlyError('');
 
     try {
-      const result = await attendanceApi.getMyAttendance({
-        startDate: `${year}-01-01`,
-        endDate: `${year}-12-31`,
-        page: 1,
-        limit: 500,
-        view: 'daily',
-      });
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
+
+      const [result, leaveRequests] = await Promise.all([
+        attendanceApi.getMyAttendance({
+          startDate: yearStart,
+          endDate: yearEnd,
+          page: 1,
+          limit: 500,
+          view: 'daily',
+        }),
+        attendanceApi.listLeaveRequests({
+          scope: 'mine',
+          status: 'approved',
+          fromDate: yearStart,
+          toDate: yearEnd,
+        }),
+      ]);
       setYearlyRows(result.rows ?? []);
+      setYearlyLeaveRows(
+        leaveRequests.filter((row) => {
+          return row.status === 'approved' && row.toDate >= yearStart && row.fromDate <= yearEnd;
+        })
+      );
 
       const leaveTypes: LeaveTypeCode[] = ['CL', 'PL', 'SL', 'OH'];
       const leaveResponses = await Promise.all(
@@ -403,6 +760,7 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
       setYearlyBalances(nextBalances);
     } catch (caught) {
       setYearlyRows([]);
+      setYearlyLeaveRows([]);
       setYearlyError(caught instanceof Error ? caught.message : 'Failed to load yearly attendance');
     } finally {
       setYearlyLoading(false);
@@ -523,7 +881,17 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
   };
 
   const submitRegularization = async (): Promise<void> => {
-    if (!regularizeDate || !regularizeReason.trim()) {
+    if (!regularizeDate) {
+      setRegularizeError('Please select attendance date first.');
+      return;
+    }
+
+    if (selectedRegularizeRow?.regularizeBlockedReason) {
+      setRegularizeError(selectedRegularizeRow.regularizeBlockedReason);
+      return;
+    }
+
+    if (!regularizeReason.trim()) {
       setRegularizeError('Reason is required before submitting regularization.');
       return;
     }
@@ -536,7 +904,7 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
       await attendanceApi.createRegularization({
         targetDate: regularizeDate,
         reason: `In: ${regularizeInTime}, Out: ${regularizeOutTime}. ${regularizeReason.trim()}`,
-        requestType: 'manual_correction',
+        requestType: regularizeType,
       });
 
       setRegularizeSuccess('Regularization request submitted.');
@@ -597,13 +965,32 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
   }, [view, ledgerApplied.leaveType, ledgerApplied.year, ledgerApplied.employeeId]);
 
   useEffect(() => {
-    if (view === 'daily') {
-      void loadDaily(dailyDate);
+    if (view !== 'monthly') {
       return;
     }
 
-    if (view === 'monthly') {
-      void loadMonthly(monthlyInput);
+    const monthQuery = new URLSearchParams(location.search).get('month');
+    if (!monthQuery || !/^\d{4}-(0[1-9]|1[0-2])$/.test(monthQuery)) {
+      return;
+    }
+
+    if (monthQuery !== monthlyInput) {
+      setMonthlyInput(monthQuery);
+    }
+  }, [location.search, monthlyInput, view]);
+
+  useEffect(() => {
+    if (view !== 'monthly') {
+      return;
+    }
+
+    void loadMonthly(monthlyInput);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthlyInput, view]);
+
+  useEffect(() => {
+    if (view === 'daily') {
+      void loadDaily(dailyDate);
       return;
     }
 
@@ -618,40 +1005,152 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
+  useEffect(() => {
+    const year = Number(yearlyYear);
+    if (!Number.isInteger(year)) {
+      return;
+    }
+
+    if (yearlySelectedMonth >= 1 && yearlySelectedMonth <= 12) {
+      return;
+    }
+
+    setYearlySelectedMonth(new Date().getMonth() + 1);
+  }, [yearlySelectedMonth, yearlyYear]);
+
   const monthlyDisplayRows = useMemo<MonthlyDisplayRow[]>(() => {
     const { year, month, daysInMonth } = monthRangeFromInput(monthlyInput);
     const rowMap = new Map(monthlyRows.map((row) => [row.date, row]));
     const rows: MonthlyDisplayRow[] = [];
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const isCurrentMonth = year === currentYear && month === currentMonth;
+    const isFutureMonth = year > currentYear || (year === currentYear && month > currentMonth);
+    const lastCompletedDay = Math.max(0, today.getDate() - 1);
+    const lastDayToShow = isFutureMonth ? 0 : isCurrentMonth ? lastCompletedDay : daysInMonth;
 
-    for (let day = daysInMonth; day >= 1; day -= 1) {
+    for (let day = lastDayToShow; day >= 1; day -= 1) {
       const date = new Date(year, month - 1, day);
       const dateKey = toIsoDate(date);
       const sourceRow = rowMap.get(dateKey);
       const computedStatus = sourceRow ? toUiStatusCode(sourceRow.status) : getMissingDayStatus(date);
+      const normalizedStatus = computedStatus.trim().toUpperCase();
+      const planned = normalizedStatus === 'WO' ? 'WO' : '-';
+      const isHolidayOrWeekOff =
+        normalizedStatus === 'WO' ||
+        normalizedStatus === 'PH' ||
+        normalizedStatus === 'OH' ||
+        planned === 'WO';
+      const regularizeBlockedReason = isHolidayOrWeekOff
+        ? 'Attendance regularize not allowed for selected date. Kindly contact HR.'
+        : '';
+      let weeklyHours = '-';
+
+      if (date.getDay() === 0) {
+        const weekStartDay = Math.max(1, day - 6);
+        let weeklyMinutes = 0;
+
+        for (let weekDay = weekStartDay; weekDay <= day; weekDay += 1) {
+          const weekDate = new Date(year, month - 1, weekDay);
+          const weekSource = rowMap.get(toIsoDate(weekDate));
+          weeklyMinutes += Math.max(0, weekSource?.workingMinutes ?? 0);
+        }
+
+        weeklyHours = formatMinutesAsHours(weeklyMinutes);
+      }
 
       rows.push({
         dateKey,
         dateLabel: formatDisplayDate(dateKey),
         dayNumber: day,
         weekday: dayNames[date.getDay()],
-        planned: computedStatus === 'WO' ? 'WO' : '-',
+        planned,
         inTime: formatTime(sourceRow?.inTime ?? null),
         outTime: formatTime(sourceRow?.outTime ?? null),
         totalHr: sourceRow?.workingHoursText ?? '--:--',
         status: computedStatus,
         late: extractDurationFromReasons(sourceRow?.validationReasons, /LATE/i),
         early: extractDurationFromReasons(sourceRow?.validationReasons, /EARLY/i),
-        canRegularize: Boolean(sourceRow) && computedStatus !== 'P',
+        canRegularizeSubmit: !regularizeBlockedReason && (Boolean(sourceRow) || isPastWorkingDay(date)),
+        regularizeBlockedReason,
+        weeklyHours,
       });
     }
 
     return rows;
   }, [monthlyInput, monthlyRows]);
 
+  useEffect(() => {
+    if (view !== 'monthly' || !monthlyDetailDate) {
+      return;
+    }
+
+    const selectedDateStillVisible = monthlyDisplayRows.some((row) => row.dateKey === monthlyDetailDate);
+    if (selectedDateStillVisible) {
+      return;
+    }
+
+    setMonthlyDetailDate(null);
+    setMonthlyDetail(null);
+    setMonthlyDetailError('');
+  }, [monthlyDetailDate, monthlyDisplayRows, view]);
+
   const selectedRegularizeRow = useMemo(
     () => monthlyDisplayRows.find((row) => row.dateKey === regularizeDate) ?? null,
     [monthlyDisplayRows, regularizeDate]
   );
+
+  const regularizeWorkingHours = useMemo(
+    () => calculateRegularizeWorkingHours(regularizeInTime, regularizeOutTime),
+    [regularizeInTime, regularizeOutTime]
+  );
+
+  const monthlyWorkSummary = useMemo(() => {
+    const totalMinutes = monthlyRows.reduce((sum, row) => sum + Math.max(0, row.workingMinutes), 0);
+    const workedDayCount = monthlyRows.filter((row) => row.workingMinutes > 0).length;
+    const averageMinutes = workedDayCount > 0 ? Math.round(totalMinutes / workedDayCount) : 0;
+
+    return {
+      totalHours: formatMinutesAsHours(totalMinutes),
+      averageHours: formatMinutesAsHours(averageMinutes),
+    };
+  }, [monthlyRows]);
+
+  const yearlyLeaveCodeMap = useMemo(() => {
+    const year = Number(yearlyYear);
+    if (!Number.isInteger(year)) {
+      return new Map<string, string>();
+    }
+
+    return buildLeaveDateCodeMap({
+      rows: yearlyLeaveRows,
+      year,
+    });
+  }, [yearlyLeaveRows, yearlyYear]);
+
+  const yearlySpecialLeaveSnapshot = useMemo(() => {
+    const summary = {
+      PTL: 0,
+      SPL: 0,
+    };
+
+    for (const row of yearlyLeaveRows) {
+      const code = String(row.leaveType ?? '').trim().toUpperCase();
+      const days = Number(row.noOfDays ?? 0);
+      if (!Number.isFinite(days) || days <= 0) {
+        continue;
+      }
+
+      if (code === 'PTL') {
+        summary.PTL += days;
+      } else if (code === 'SPL') {
+        summary.SPL += days;
+      }
+    }
+
+    return summary;
+  }, [yearlyLeaveRows]);
 
   const yearlyMatrix = useMemo(() => {
     const year = Number(yearlyYear);
@@ -672,7 +1171,8 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
         const date = new Date(year, month - 1, day);
         const dateKey = toIsoDate(date);
         const sourceRow = rowMap.get(dateKey);
-        const value = sourceRow ? toUiStatusCode(sourceRow.status) : getMissingDayStatus(date);
+        const leaveCode = yearlyLeaveCodeMap.get(dateKey);
+        const value = leaveCode || (sourceRow ? toUiStatusCode(sourceRow.status) : getMissingDayStatus(date));
 
         cells.push(value);
 
@@ -688,7 +1188,42 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
         cells,
       };
     });
-  }, [yearlyRows, yearlyYear]);
+  }, [yearlyLeaveCodeMap, yearlyRows, yearlyYear]);
+
+  const yearlyMonthDetailRows = useMemo<YearlyDetailRow[]>(() => {
+    const year = Number(yearlyYear);
+    if (!Number.isInteger(year) || yearlySelectedMonth < 1 || yearlySelectedMonth > 12) {
+      return [];
+    }
+
+    const rowMap = new Map(yearlyRows.map((row) => [row.date, row]));
+    const daysInMonth = new Date(year, yearlySelectedMonth, 0).getDate();
+    const rows: YearlyDetailRow[] = [];
+
+    for (let day = daysInMonth; day >= 1; day -= 1) {
+      const date = new Date(year, yearlySelectedMonth - 1, day);
+      const dateKey = toIsoDate(date);
+      const sourceRow = rowMap.get(dateKey);
+      const leaveCode = yearlyLeaveCodeMap.get(dateKey);
+      const baseStatus = sourceRow ? toUiStatusCode(sourceRow.status) : getMissingDayStatus(date);
+      const status = (leaveCode || baseStatus).trim().toUpperCase();
+
+      rows.push({
+        dateKey,
+        dayNumber: day,
+        weekday: dayNames[date.getDay()],
+        planned: toPlannedCode(status),
+        inTime: toTimeOrZero(sourceRow?.inTime),
+        outTime: toTimeOrZero(sourceRow?.outTime),
+        status,
+        totalHr: sourceRow?.workingHoursText ?? '00:00',
+        late: extractDurationFromReasons(sourceRow?.validationReasons, /LATE/i),
+        early: extractDurationFromReasons(sourceRow?.validationReasons, /EARLY/i),
+      });
+    }
+
+    return rows;
+  }, [yearlyLeaveCodeMap, yearlyRows, yearlySelectedMonth, yearlyYear]);
 
   const ledgerModalRow = useMemo(
     () => ledger?.months.find((monthRow) => monthRow.month === ledgerModalMonth) ?? null,
@@ -831,7 +1366,9 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
       <div className="attx-chip-row">
         <span className="attx-chip attx-chip--hint">Month: {monthlyInput}</span>
         <span className="attx-chip attx-chip--hint">Rows: {monthlyDisplayRows.length}</span>
-        <span className="attx-chip attx-chip--accent">A.R. enabled on non-present days</span>
+        <span className="attx-chip attx-chip--hint">Monthly Wrk Hrs: {monthlyWorkSummary.totalHours}</span>
+        <span className="attx-chip attx-chip--hint">Avg. Monthly Wrk Hrs: {monthlyWorkSummary.averageHours}</span>
+        <span className="attx-chip attx-chip--accent">A.R. available by date (holiday/week-off may be blocked)</span>
       </div>
 
       {monthlyLoading ? <p className="attx-inline-feedback">Loading monthly attendance...</p> : null}
@@ -854,42 +1391,69 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
                 <th>L.C</th>
                 <th>E.G</th>
                 <th>A.R.</th>
+                <th>Wkly Hrs</th>
               </tr>
             </thead>
             <tbody>
               {monthlyDisplayRows.map((row) => (
                 <tr key={row.dateKey}>
-                  <td>{row.dayNumber}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className={`attx-date-link ${
+                        monthlyDetailDate === row.dateKey ? 'attx-date-link--active' : ''
+                      }`}
+                      onClick={() => {
+                        setMonthlyDetailDate(row.dateKey);
+                        void loadMonthlyDetail(row.dateKey);
+                      }}
+                    >
+                      {row.dayNumber}
+                    </button>
+                  </td>
                   <td>{row.weekday}</td>
                   <td>{row.planned}</td>
                   <td>{row.inTime}</td>
                   <td>{row.outTime}</td>
                   <td>
-                    <span className={`attx-status ${statusClass[row.status]}`}>{row.status}</span>
+                    <span className={`attx-status ${getStatusClass(row.status)}`}>{row.status}</span>
                   </td>
                   <td>{row.totalHr}</td>
                   <td>{row.late}</td>
                   <td>{row.early}</td>
                   <td>
-                    {row.canRegularize ? (
-                      <button
-                        type="button"
-                        className="attx-ar-btn"
-                        onClick={() => {
-                          setRegularizeDate(row.dateKey);
-                          setRegularizeInTime(row.inTime !== '--:--' ? row.inTime : '09:30');
-                          setRegularizeOutTime(row.outTime !== '--:--' ? row.outTime : '18:00');
-                          setRegularizeReason('');
-                          setRegularizeError('');
-                          setRegularizeSuccess('');
-                        }}
-                      >
-                        A.R.
-                      </button>
-                    ) : (
-                      '-'
-                    )}
+                    <button
+                      type="button"
+                      className="attx-ar-btn"
+                      onClick={() => {
+                        const inferredType =
+                          row.status.trim().toUpperCase() === 'I'
+                            ? 'invalid_punch'
+                            : row.status.trim().toUpperCase() === 'A'
+                              ? 'missed_punch'
+                              : 'manual_correction';
+                        const blockedFallback = row.regularizeBlockedReason ? '00:00' : '';
+                        setRegularizeDate(row.dateKey);
+                        setRegularizeType(inferredType);
+                        setRegularizeInTime(
+                          row.inTime !== '--:--'
+                            ? row.inTime
+                            : blockedFallback || context?.punchWindow?.punchInStartTime || '09:30'
+                        );
+                        setRegularizeOutTime(
+                          row.outTime !== '--:--'
+                            ? row.outTime
+                            : blockedFallback || context?.punchWindow?.punchOutStartTime || '18:00'
+                        );
+                        setRegularizeReason('');
+                        setRegularizeError(row.regularizeBlockedReason || '');
+                        setRegularizeSuccess('');
+                      }}
+                    >
+                      A.R.
+                    </button>
                   </td>
+                  <td>{row.weeklyHours}</td>
                 </tr>
               ))}
             </tbody>
@@ -897,31 +1461,157 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
         </div>
       </section>
 
+      {monthlyDetailDate ? (
+        <section className="attx-glass attx-table-shell">
+          <h3 className="attx-monthly-detail-title">Punch Details - {formatDisplayDate(monthlyDetailDate)}</h3>
+          {monthlyDetailLoading ? <p className="attx-inline-feedback">Loading day punches...</p> : null}
+          {monthlyDetailError ? (
+            <p className="attx-inline-feedback attx-inline-feedback--error">{monthlyDetailError}</p>
+          ) : null}
+          <div className="attx-table-scroll">
+            <table className="attx-table attx-table--daily">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Punch Time</th>
+                  <th>Image Data</th>
+                  <th>Geo Location</th>
+                  <th>Latitude Longitude</th>
+                  <th>Punch Source</th>
+                  <th>Mac Address</th>
+                  <th>Company Location</th>
+                  <th>Distance Travelled</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(monthlyDetail?.punches ?? []).map((punch) => (
+                  <tr key={punch.id}>
+                    <td>{formatDisplayDate(monthlyDetailDate)}</td>
+                    <td>{formatTime(punch.time)}</td>
+                    <td>{punch.photoUrl ? 'Available' : '-'}</td>
+                    <td>
+                      <span className="attx-geo-pin">{punch.validationStatus.toUpperCase()}</span>
+                    </td>
+                    <td>{`${punch.location.latitude.toFixed(6)}, ${punch.location.longitude.toFixed(6)}`}</td>
+                    <td>{punch.source}</td>
+                    <td>{punch.macAddress || '-'}</td>
+                    <td>{punch.companyLocation?.name ?? '-'}</td>
+                    <td>{formatDistanceKm(punch.distanceFromOfficeMeters)}</td>
+                  </tr>
+                ))}
+                {!monthlyDetailLoading && !(monthlyDetail?.punches?.length ?? 0) ? (
+                  <tr>
+                    <td colSpan={9}>No punches found for selected date.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {selectedRegularizeRow ? (
         <section className="attx-glass attx-regularise">
           <div className="attx-regularise-head">
-            <h3>A.R. - Attendance Regularize</h3>
-            <button type="button" className="attx-btn attx-btn--ghost" onClick={() => setRegularizeDate(null)}>
-              Close
-            </button>
+            <h3>Regularisation</h3>
           </div>
 
-          <div className="attx-info-grid">
-            <p><span>Employee</span> {employeeName}</p>
-            <p><span>Ecode</span> {employeeCode}</p>
-            <p><span>Attendance Date</span> {selectedRegularizeRow.dateLabel}</p>
-            <p><span>Marked As</span> {selectedRegularizeRow.status}</p>
+          <div className="attx-regularise-meta">
+            <p>
+              <span>Reporting Mgr.(Ecode):</span> NA
+            </p>
+            <p>
+              <span>Work Location:</span> NA
+            </p>
+            <p>
+              <span>Attendance Date:</span> {selectedRegularizeRow.dateLabel}
+            </p>
+            <p>
+              <span>Planned Shift:</span> {selectedRegularizeRow.planned === '-' ? '00' : selectedRegularizeRow.planned}
+            </p>
+            <p>
+              <span>Shift In Time:</span> {context?.punchWindow?.punchInStartTime ?? '09:30'}
+            </p>
+            <p>
+              <span>Shift Out Time:</span> {context?.punchWindow?.punchOutStartTime ?? '18:00'}
+            </p>
           </div>
 
-          <div className="attx-regularise-form">
+          <div className="attx-regularise-divider" />
+
+          <div className="attx-regularise-meta">
+            <p>
+              <span>In Time:</span> {selectedRegularizeRow.inTime}
+            </p>
+            <p>
+              <span>Out Time:</span> {selectedRegularizeRow.outTime}
+            </p>
+            <p>
+              <span>Att. Marked as:</span> {formatRegularizeMarkedAs(selectedRegularizeRow.status)}
+            </p>
+            <p />
+          </div>
+
+          <div className="attx-regularise-divider" />
+
+          <h4 className="attx-regularise-subtitle">Regularisation</h4>
+
+          <div className="attx-regularise-form attx-regularise-form--legacy">
+            <label className="attx-field">
+              <span>Regularise Type</span>
+              <div className="attx-regularise-type-row">
+                <select
+                  value={regularizeType}
+                  onChange={(event) =>
+                    setRegularizeType(event.target.value as 'manual_correction' | 'missed_punch' | 'invalid_punch')
+                  }
+                  disabled={Boolean(selectedRegularizeRow.regularizeBlockedReason)}
+                >
+                  <option value="manual_correction">Manual Correction</option>
+                  <option value="missed_punch">Missed Punch</option>
+                  <option value="invalid_punch">Invalid Punch</option>
+                </select>
+                <span className="attx-regularise-help" title="Select request type">
+                  ?
+                </span>
+              </div>
+            </label>
+            <div />
+
+            <label className="attx-field">
+              <span>In Date</span>
+              <input value={selectedRegularizeRow.dateLabel} readOnly />
+            </label>
+            <label className="attx-field">
+              <span>Exit Date</span>
+              <input value={selectedRegularizeRow.dateLabel} readOnly />
+            </label>
+
             <label className="attx-field">
               <span>In Time</span>
-              <input value={regularizeInTime} onChange={(event) => setRegularizeInTime(event.target.value)} />
+              <input
+                type="time"
+                value={regularizeInTime}
+                onChange={(event) => setRegularizeInTime(event.target.value)}
+                disabled={Boolean(selectedRegularizeRow.regularizeBlockedReason)}
+              />
             </label>
             <label className="attx-field">
               <span>Out Time</span>
-              <input value={regularizeOutTime} onChange={(event) => setRegularizeOutTime(event.target.value)} />
+              <input
+                type="time"
+                value={regularizeOutTime}
+                onChange={(event) => setRegularizeOutTime(event.target.value)}
+                disabled={Boolean(selectedRegularizeRow.regularizeBlockedReason)}
+              />
             </label>
+
+            <label className="attx-field">
+              <span>Working Hrs</span>
+              <input value={regularizeWorkingHours} readOnly />
+            </label>
+            <div />
+
             <label className="attx-field attx-field--full">
               <span>Remarks</span>
               <textarea
@@ -929,6 +1619,7 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
                 value={regularizeReason}
                 onChange={(event) => setRegularizeReason(event.target.value)}
                 placeholder="Add reason for regularization request"
+                disabled={Boolean(selectedRegularizeRow.regularizeBlockedReason)}
               />
             </label>
           </div>
@@ -937,13 +1628,22 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
           {regularizeSuccess ? <p className="attx-note">{regularizeSuccess}</p> : null}
 
           <div className="attx-action-row">
+            {selectedRegularizeRow.canRegularizeSubmit ? (
+              <button
+                type="button"
+                className="attx-btn attx-btn--primary"
+                disabled={regularizeLoading}
+                onClick={() => void submitRegularization()}
+              >
+                {regularizeLoading ? 'Submitting...' : 'Submit Request'}
+              </button>
+            ) : null}
             <button
               type="button"
-              className="attx-btn attx-btn--primary"
-              disabled={regularizeLoading}
-              onClick={() => void submitRegularization()}
+              className={`attx-btn ${selectedRegularizeRow.canRegularizeSubmit ? 'attx-btn--ghost' : 'attx-btn--primary'}`}
+              onClick={() => setRegularizeDate(null)}
             >
-              {regularizeLoading ? 'Submitting...' : 'Submit Request'}
+              Close
             </button>
           </div>
         </section>
@@ -957,15 +1657,34 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
       {yearlyError ? <p className="attx-inline-feedback attx-inline-feedback--error">{yearlyError}</p> : null}
 
       <section className="attx-glass attx-balance">
-        <h3>Leave Balance</h3>
+        <h3>Leave Snapshot</h3>
         <div className="attx-balance-row">
-          {(['CL', 'PL', 'SL', 'OH'] as LeaveTypeCode[]).map((typeCode) => (
-            <div key={typeCode} className="attx-balance-pill">
-              <strong>{typeCode}</strong>
-              <span>{yearlyBalances[typeCode].toFixed(2)}</span>
-            </div>
-          ))}
+          <div className="attx-balance-pill">
+            <strong>CL</strong>
+            <span>{yearlyBalances.CL.toFixed(2)}</span>
+          </div>
+          <div className="attx-balance-pill">
+            <strong>PL</strong>
+            <span>{yearlyBalances.PL.toFixed(2)}</span>
+          </div>
+          <div className="attx-balance-pill">
+            <strong>SL</strong>
+            <span>{yearlyBalances.SL.toFixed(2)}</span>
+          </div>
+          <div className="attx-balance-pill">
+            <strong>OH</strong>
+            <span>{yearlyBalances.OH.toFixed(2)}</span>
+          </div>
+          <div className="attx-balance-pill">
+            <strong>PTL</strong>
+            <span>{yearlySpecialLeaveSnapshot.PTL.toFixed(2)}</span>
+          </div>
+          <div className="attx-balance-pill">
+            <strong>SPL</strong>
+            <span>{yearlySpecialLeaveSnapshot.SPL.toFixed(2)}</span>
+          </div>
         </div>
+        <p className="attx-note">PTL/SPL values are derived from approved leave requests in the selected year.</p>
       </section>
 
       <section className="attx-glass attx-table-shell">
@@ -983,10 +1702,20 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
             <tbody>
               {yearlyMatrix.map((monthRow) => (
                 <tr key={monthRow.month}>
-                  <td>{monthRow.monthLabel}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className={`attx-month-link ${
+                        yearlySelectedMonth === monthRow.month ? 'attx-month-link--active' : ''
+                      }`}
+                      onClick={() => setYearlySelectedMonth(monthRow.month)}
+                    >
+                      {monthRow.monthLabel}
+                    </button>
+                  </td>
                   <td>{monthRow.workingDays}</td>
                   {monthRow.cells.map((statusCode, index) => (
-                    <td key={`${monthRow.month}-${index}`} className={statusClass[statusCode]}>
+                    <td key={`${monthRow.month}-${index}`} className={getStatusClass(statusCode)}>
                       {statusCode}
                     </td>
                   ))}
@@ -997,7 +1726,59 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
         </div>
       </section>
 
-      <p className="attx-note">Note: Yearly matrix is built from attendance API day records.</p>
+      <p className="attx-note">
+        Note: Yearly matrix is built from attendance API day records plus approved leave requests.
+      </p>
+      <p className="attx-note">Prefix H means Half Day.</p>
+
+      <section className="attx-glass attx-table-shell attx-yearly-detail-shell">
+        <div className="attx-yearly-detail-head">
+          <h3>
+            {monthNames[Math.max(0, Math.min(11, yearlySelectedMonth - 1))]}-{yearlyYear} Details
+          </h3>
+          <button
+            type="button"
+            className="attx-btn attx-btn--secondary"
+            onClick={() => navigate(`/attendance/monthly?month=${yearlyYear}-${pad(yearlySelectedMonth)}`)}
+          >
+            Open Monthly Module
+          </button>
+        </div>
+        <div className="attx-table-scroll">
+          <table className="attx-table attx-table--yearly-detail">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Day</th>
+                <th>Planned</th>
+                <th>In</th>
+                <th>Out</th>
+                <th>Status</th>
+                <th>Total Hr.</th>
+                <th>L.C</th>
+                <th>E.G</th>
+              </tr>
+            </thead>
+            <tbody>
+              {yearlyMonthDetailRows.map((row) => (
+                <tr key={row.dateKey}>
+                  <td>{row.dayNumber}</td>
+                  <td>{row.weekday}</td>
+                  <td>{row.planned}</td>
+                  <td>{row.inTime}</td>
+                  <td>{row.outTime}</td>
+                  <td>
+                    <span className={`attx-status ${getStatusClass(row.status)}`}>{row.status}</span>
+                  </td>
+                  <td>{row.totalHr}</td>
+                  <td>{row.late}</td>
+                  <td>{row.early}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="attx-legend-grid">
         <div className="attx-glass attx-table-shell">
@@ -1009,7 +1790,7 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
               </tr>
             </thead>
             <tbody>
-              {leaveLegend.map(([status, abbr]) => (
+              {yearlyStatusLegend.map(([status, abbr]) => (
                 <tr key={abbr}>
                   <td>{status}</td>
                   <td>{abbr}</td>
@@ -1023,15 +1804,15 @@ export const MyAttendancePage = ({ view }: MyAttendancePageProps): JSX.Element =
           <table className="attx-table attx-table--legend">
             <thead>
               <tr>
-                <th>Key</th>
-                <th>Meaning</th>
+                <th>Status</th>
+                <th>Abbr.</th>
               </tr>
             </thead>
             <tbody>
-              {regularizationLegend.map(([key, value]) => (
-                <tr key={key}>
-                  <td>{key}</td>
-                  <td>{value}</td>
+              {yearlyHalfDayLegend.map(([status, abbr]) => (
+                <tr key={abbr}>
+                  <td>{status}</td>
+                  <td>{abbr}</td>
                 </tr>
               ))}
             </tbody>

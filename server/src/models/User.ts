@@ -22,7 +22,7 @@ const punchWindowSchema = new Schema(
     },
     punchOutEndTime: {
       type: String,
-      default: '19:00',
+      default: '08:00',
       trim: true
     }
   },

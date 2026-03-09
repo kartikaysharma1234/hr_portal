@@ -346,6 +346,41 @@
   color: #3f2644;
 }
 
+.attx-status--leave {
+  background: #9fc6ff;
+  color: #0f2846;
+}
+
+.attx-status--half-leave {
+  background: #d8b492;
+  color: #2f2012;
+}
+
+.attx-status--half-combo {
+  background: #f4b2c2;
+  color: #401a2b;
+}
+
+.attx-status--od {
+  background: #9fc5f8;
+  color: #102540;
+}
+
+.attx-status--wfh {
+  background: #b7e8c7;
+  color: #143320;
+}
+
+.attx-status--cof {
+  background: #f7c8ac;
+  color: #3b2418;
+}
+
+.attx-status--leave-alt {
+  background: #e3d8ff;
+  color: #2d2150;
+}
+
 .attx-geo-pin {
   display: inline-block;
   border-radius: 999px;
@@ -367,6 +402,26 @@
 
 .attx-ar-btn:hover {
   box-shadow: 0 8px 18px rgba(62, 100, 255, 0.28);
+}
+
+.attx-date-link {
+  border: none;
+  background: transparent;
+  color: #9ec5ff;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.attx-date-link--active {
+  color: #ffd7bf;
+  font-weight: 700;
+}
+
+.attx-monthly-detail-title {
+  margin: 2px 2px 10px;
+  font-size: 16px;
 }
 
 .attx-regularise {
@@ -402,10 +457,54 @@
   margin-right: 8px;
 }
 
+.attx-regularise-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 28px;
+}
+
+.attx-regularise-meta p {
+  margin: 0;
+  color: #d6dcf5;
+}
+
+.attx-regularise-meta span {
+  color: #9ea8c7;
+  margin-right: 8px;
+}
+
+.attx-regularise-divider {
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.attx-regularise-subtitle {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
 .attx-regularise-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.attx-regularise-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.attx-regularise-help {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-grid;
+  place-items: center;
+  background: linear-gradient(135deg, #ef7e39, #e96f2e);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .attx-field--full {
@@ -485,28 +584,80 @@
 
 .attx-table--yearly th,
 .attx-table--yearly td {
-  padding: 5px 8px;
-  min-width: 34px;
+  padding: 4px 4px;
+  min-width: 0;
+  font-size: 11px;
 }
 
 .attx-table--yearly th:first-child,
 .attx-table--yearly td:first-child {
-  min-width: 84px;
+  width: 64px;
 }
 
 .attx-table--yearly th:nth-child(2),
 .attx-table--yearly td:nth-child(2) {
-  min-width: 52px;
+  width: 46px;
 }
 
 .attx-legend-grid {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
 }
 
 .attx-table--legend {
-  min-width: 560px;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.attx-table-shell--yearly .attx-table-scroll--yearly {
+  overflow: visible;
+}
+
+.attx-table--yearly {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 0;
+}
+
+.attx-month-link {
+  border: none;
+  background: transparent;
+  color: #9ec5ff;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.attx-month-link--active {
+  color: #ffd7bf;
+  font-weight: 700;
+}
+
+.attx-yearly-detail-shell {
+  padding: 12px;
+}
+
+.attx-yearly-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.attx-yearly-detail-head h3 {
+  margin: 0;
+}
+
+.attx-table--yearly-detail {
+  min-width: 0;
+}
+
+.attx-table--yearly-detail th,
+.attx-table--yearly-detail td {
+  font-size: 12px;
 }
 
 .attx-ledger-shell {
@@ -802,6 +953,7 @@
     grid-template-columns: 1fr;
   }
 
+  .attx-regularise-meta,
   .attx-info-grid,
   .attx-regularise-form {
     grid-template-columns: 1fr;

@@ -190,6 +190,8 @@ export const attendanceApi = {
   async listLeaveRequests(params?: {
     scope?: 'mine' | 'assigned' | 'all';
     status?: LeaveRequestStatus | 'all';
+    fromDate?: string;
+    toDate?: string;
   }): Promise<LeaveRequestRecord[]> {
     const response = await apiClient.get<ApiEnvelope<LeaveRequestRecord[]>>(
       '/v1/attendance/leave-requests',

@@ -57,6 +57,19 @@ const reason = (
   meta?: Record<string, unknown>
 ): AttendanceValidationReason => ({ code, message, severity, meta });
 
+const isMinuteWithinWindow = (
+  currentMinute: number,
+  startMinute: number,
+  endMinute: number
+): boolean => {
+  // Supports cross-midnight windows, for example 17:00 -> 08:00.
+  if (startMinute <= endMinute) {
+    return currentMinute >= startMinute && currentMinute <= endMinute;
+  }
+
+  return currentMinute >= startMinute || currentMinute <= endMinute;
+};
+
 export const validatePunchTime = async (
   input: TimeValidationInput
 ): Promise<TimeValidationResult> => {
@@ -80,7 +93,7 @@ export const validatePunchTime = async (
     const outStartMinutes = outStart.hour * 60 + outStart.minute;
     const outEndMinutes = outEnd.hour * 60 + outEnd.minute;
 
-    if (input.punchType === 'IN' && (localMinute < inStartMinutes || localMinute > inEndMinutes)) {
+    if (input.punchType === 'IN' && !isMinuteWithinWindow(localMinute, inStartMinutes, inEndMinutes)) {
       reasons.push(
         reason(
           'OUTSIDE_PUNCH_IN_WINDOW',
@@ -94,7 +107,7 @@ export const validatePunchTime = async (
       );
     }
 
-    if (input.punchType === 'OUT' && (localMinute < outStartMinutes || localMinute > outEndMinutes)) {
+    if (input.punchType === 'OUT' && !isMinuteWithinWindow(localMinute, outStartMinutes, outEndMinutes)) {
       reasons.push(
         reason(
           'OUTSIDE_PUNCH_OUT_WINDOW',
