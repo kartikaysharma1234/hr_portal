@@ -26,14 +26,12 @@ import {
 } from '../pages/ProfilePlaceholders';
 import { ProfileWorkExpPage } from '../pages/ProfileWorkExpPage';
 import { AttendanceRegularisePage } from '../pages/AttendanceRegularisePage';
+import { LeaveOdWfhPage } from '../pages/LeaveOdWfhPage';
 import { RegisterPage } from '../pages/RegisterPage';
-import {
-  AppreciationRequestPage,
-  HelpDeskRequestPage,
-  LeaveEncashmentPage,
-  LeaveOdWfhPage,
-  ResignationNotePage
-} from '../pages/RequestPlaceholders';
+import { AppreciationRequestPage } from '../pages/AppreciationRequestPage';
+import { HelpDeskRequestPage } from '../pages/HelpDeskRequestPage';
+import { LeaveEncashmentPage } from '../pages/LeaveEncashmentPage';
+import { ResignationNotePage } from '../pages/ResignationNotePage';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage';
 import { SalarySlipPage } from '../pages/SalarySlipPage';
 import { SuperAdminDashboardPage } from '../pages/SuperAdminDashboardPage';

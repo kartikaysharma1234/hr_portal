@@ -21,7 +21,6 @@ const RequestPlaceholder = ({ title }: RequestPlaceholderProps): JSX.Element => 
   );
 };
 
-export const LeaveOdWfhPage = (): JSX.Element => <RequestPlaceholder title="Leave/OD/WFH" />;
 export const HelpDeskRequestPage = (): JSX.Element => <RequestPlaceholder title="HelpDesk" />;
 export const AppreciationRequestPage = (): JSX.Element => <RequestPlaceholder title="Appreciation" />;
 export const ResignationNotePage = (): JSX.Element => <RequestPlaceholder title="Resignation Note" />;

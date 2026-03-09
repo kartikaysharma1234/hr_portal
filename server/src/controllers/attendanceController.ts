@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 
 import { AttendancePunchModel } from '../models/AttendancePunch';
 import { AttendanceLeaveLedgerModel } from '../models/AttendanceLeaveLedger';
+import { AttendanceLeaveRequestModel } from '../models/AttendanceLeaveRequest';
 import { AttendanceRegularizationModel } from '../models/AttendanceRegularization';
 import { AttendanceSettingsModel } from '../models/AttendanceSettings';
 import { EmployeeModel } from '../models/Employee';
@@ -45,7 +46,30 @@ import type { PunchSource, PunchType } from '../types/attendance';
 const attendanceAdminRoles = new Set(['super_admin', 'admin', 'hr']);
 const attendanceApproverRoles = new Set(['super_admin', 'admin', 'hr', 'manager']);
 const leaveTypeValues = ['PL', 'CL', 'SL', 'OH'] as const;
+const leaveRequestTypeValues = [
+  'CL',
+  'HCL',
+  'HPL',
+  'PL',
+  'HSL',
+  'SL',
+  'COF',
+  'HCO',
+  'HOD',
+  'OD',
+  'OH',
+  'HWFH',
+  'WFH',
+  'SPL'
+] as const;
+const halfDayLeaveRequestTypeValues = ['HCL', 'HPL', 'HSL', 'HCO', 'HOD', 'HWFH'] as const;
+const leaveRequestStatusValues = ['pending', 'submitted', 'approved', 'rejected', 'cancelled'] as const;
+const leaveDurationTypeValues = ['full_day', 'first_half', 'second_half'] as const;
 type LeaveTypeCode = (typeof leaveTypeValues)[number];
+type LeaveRequestTypeCode = (typeof leaveRequestTypeValues)[number];
+type HalfDayLeaveRequestTypeCode = (typeof halfDayLeaveRequestTypeValues)[number];
+type LeaveRequestStatusCode = (typeof leaveRequestStatusValues)[number];
+type LeaveDurationTypeCode = (typeof leaveDurationTypeValues)[number];
 
 const openingBalanceFallbacks: Record<LeaveTypeCode, number> = {
   PL: 9.75,
@@ -241,6 +265,119 @@ const parseLeaveType = (rawValue: unknown): LeaveTypeCode => {
   }
 
   return value as LeaveTypeCode;
+};
+
+const parseLeaveRequestType = (rawValue: unknown): LeaveRequestTypeCode => {
+  const value = String(rawValue ?? 'PL').trim().toUpperCase();
+
+  if (!leaveRequestTypeValues.includes(value as LeaveRequestTypeCode)) {
+    throw createHttpError(
+      400,
+      'leaveType must be one of CL/HCL/HPL/PL/HSL/SL/COF/HCO/HOD/OD/OH/HWFH/WFH/SPL'
+    );
+  }
+
+  return value as LeaveRequestTypeCode;
+};
+
+const parseLeaveDurationType = (rawValue: unknown): LeaveDurationTypeCode => {
+  const value = String(rawValue ?? 'full_day').trim().toLowerCase();
+  if (!leaveDurationTypeValues.includes(value as LeaveDurationTypeCode)) {
+    throw createHttpError(400, 'durationType must be full_day/first_half/second_half');
+  }
+
+  return value as LeaveDurationTypeCode;
+};
+
+const parseIsoDateStrict = (rawValue: unknown, fieldName: string): string => {
+  const value = String(rawValue ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw createHttpError(400, `${fieldName} must be YYYY-MM-DD`);
+  }
+
+  const parsed = DateTime.fromISO(value, { zone: 'Asia/Kolkata' });
+  if (!parsed.isValid) {
+    throw createHttpError(400, `${fieldName} is invalid`);
+  }
+
+  return parsed.toFormat('yyyy-LL-dd');
+};
+
+const buildLeaveDateSlices = (params: {
+  fromDate: string;
+  toDate: string;
+  leaveType: LeaveRequestTypeCode;
+  durationType: LeaveDurationTypeCode;
+}): Array<{ dateIso: string; units: number }> => {
+  const start = DateTime.fromISO(params.fromDate, { zone: 'Asia/Kolkata' }).startOf('day');
+  const end = DateTime.fromISO(params.toDate, { zone: 'Asia/Kolkata' }).startOf('day');
+
+  if (!start.isValid || !end.isValid) {
+    throw createHttpError(400, 'fromDate/toDate is invalid');
+  }
+
+  if (end < start) {
+    throw createHttpError(400, 'toDate must be greater than or equal to fromDate');
+  }
+
+  const isHalfDayType = halfDayLeaveRequestTypeValues.includes(
+    params.leaveType as HalfDayLeaveRequestTypeCode
+  );
+  const isHalfDayDuration = params.durationType !== 'full_day';
+  const useHalfDay = isHalfDayType || isHalfDayDuration;
+
+  if (useHalfDay && start.toISODate() !== end.toISODate()) {
+    throw createHttpError(400, 'Half day leave is allowed only for a single date');
+  }
+
+  if (!useHalfDay) {
+    const slices: Array<{ dateIso: string; units: number }> = [];
+    let cursor = start;
+    while (cursor <= end) {
+      slices.push({
+        dateIso: cursor.toFormat('yyyy-LL-dd'),
+        units: 1
+      });
+      cursor = cursor.plus({ days: 1 });
+    }
+    return slices;
+  }
+
+  return [
+    {
+      dateIso: start.toFormat('yyyy-LL-dd'),
+      units: 0.5
+    }
+  ];
+};
+
+const resolveLedgerLeaveType = (leaveType: LeaveRequestTypeCode): LeaveTypeCode | null => {
+  if (leaveType === 'CL' || leaveType === 'HCL') {
+    return 'CL';
+  }
+
+  if (leaveType === 'PL' || leaveType === 'HPL') {
+    return 'PL';
+  }
+
+  if (leaveType === 'SL' || leaveType === 'HSL') {
+    return 'SL';
+  }
+
+  if (leaveType === 'OH') {
+    return 'OH';
+  }
+
+  return null;
+};
+
+const formatLeaveRequestDate = (isoDate: string): string => {
+  const parsed = DateTime.fromISO(isoDate, { zone: 'Asia/Kolkata' });
+  if (!parsed.isValid) {
+    return isoDate;
+  }
+
+  return parsed.toFormat('dd-LLL-yy');
 };
 
 const buildDefaultMonthlyRows = (year: number, leaveType: LeaveTypeCode): Array<{
@@ -451,6 +588,145 @@ const normalizeLeaveLedgerPayload = (params: {
       discrepancy: 0
     }
   };
+};
+
+const leaveTypeLabelByCode: Record<LeaveRequestTypeCode, string> = {
+  CL: 'Casual Leave',
+  HCL: 'Half CL',
+  HPL: 'Half PL',
+  PL: 'Privilege Leave',
+  HSL: 'Half SL',
+  SL: 'Sick Leave',
+  COF: 'Compensatory Off',
+  HCO: 'Half Comp Off',
+  HOD: 'Half Outdoor Duty',
+  OD: 'Outdoor Duty',
+  OH: 'Optional Holiday',
+  HWFH: 'Half Day Work From Home',
+  WFH: 'Work From Home',
+  SPL: 'Special Leave'
+};
+
+const mapLeaveRequestPayload = (row: any) => ({
+  id: row._id.toString(),
+  leaveType: row.leaveType as LeaveRequestTypeCode,
+  leaveTypeLabel: leaveTypeLabelByCode[row.leaveType as LeaveRequestTypeCode] ?? row.leaveType,
+  durationType: row.durationType as LeaveDurationTypeCode,
+  fromDate: row.fromDate,
+  toDate: row.toDate,
+  fromDateLabel: formatLeaveRequestDate(row.fromDate),
+  toDateLabel: formatLeaveRequestDate(row.toDate),
+  noOfDays: Number(row.noOfDays ?? 0),
+  reason: row.reason ?? '',
+  workLocation: row.workLocation ?? '',
+  status: row.status as LeaveRequestStatusCode,
+  appliedOn: row.createdAt,
+  appliedOnLabel: DateTime.fromJSDate(new Date(row.createdAt)).toFormat('dd-LLL-yy'),
+  submittedAt: row.submittedAt ?? null,
+  decidedAt: row.decidedAt ?? null,
+  decisionComment: row.decisionComment ?? '',
+  employee: row.employee
+    ? {
+        id: row.employee._id?.toString?.() ?? String(row.employee._id ?? ''),
+        employeeCode: row.employee.employeeCode ?? '',
+        name: `${row.employee.firstName ?? ''} ${row.employee.lastName ?? ''}`.trim()
+      }
+    : null,
+  approver: row.approverUser
+    ? {
+        id: row.approverUser._id?.toString?.() ?? String(row.approverUser._id ?? ''),
+        name: row.approverUser.name ?? '',
+        email: row.approverUser.email ?? ''
+      }
+    : null,
+  proxyApprover: row.decidedBy
+    ? {
+        id: row.decidedBy._id?.toString?.() ?? String(row.decidedBy._id ?? ''),
+        name: row.decidedBy.name ?? '',
+        email: row.decidedBy.email ?? ''
+      }
+    : null,
+  auditTrail: Array.isArray(row.auditTrail)
+    ? row.auditTrail.map((audit: any) => ({
+        action: String(audit.action ?? ''),
+        at: audit.at ?? null,
+        comment: String(audit.comment ?? ''),
+        byUser: audit.byUser?.toString?.() ?? String(audit.byUser ?? '')
+      }))
+    : []
+});
+
+const applyApprovedLeaveToLedger = async (params: {
+  organizationId: string;
+  employeeId: string;
+  leaveType: LeaveTypeCode;
+  fromDate: string;
+  toDate: string;
+  durationType: LeaveDurationTypeCode;
+}): Promise<void> => {
+  const slices = buildLeaveDateSlices({
+    fromDate: params.fromDate,
+    toDate: params.toDate,
+    leaveType: params.leaveType,
+    durationType: params.durationType
+  });
+
+  const ledgerByYear = new Map<number, any>();
+
+  for (const slice of slices) {
+    const date = DateTime.fromISO(slice.dateIso, { zone: 'Asia/Kolkata' }).startOf('day');
+    const year = date.year;
+    const month = date.month;
+
+    let ledger = ledgerByYear.get(year);
+    if (!ledger) {
+      const ensured = await ensureLeaveLedgerDocument({
+        organizationId: params.organizationId,
+        employeeId: params.employeeId,
+        leaveType: params.leaveType,
+        year
+      });
+
+      ledger = await AttendanceLeaveLedgerModel.findOne({
+        organization: params.organizationId,
+        employee: params.employeeId,
+        leaveType: params.leaveType,
+        year
+      }).exec();
+
+      if (!ledger) {
+        throw createHttpError(
+          500,
+          `Unable to update leave ledger for ${params.leaveType} (${ensured?.year ?? year})`
+        );
+      }
+
+      ledgerByYear.set(year, ledger);
+    }
+
+    let monthRow = (ledger.monthly ?? []).find((item: any) => Number(item.month) === month);
+    if (!monthRow) {
+      monthRow = {
+        month,
+        days: date.daysInMonth ?? 30,
+        credit: 0,
+        availed: 0,
+        availedDates: []
+      };
+      ledger.monthly.push(monthRow);
+    }
+
+    monthRow.availed = Number(monthRow.availed ?? 0) + slice.units;
+    monthRow.availedDates = Array.isArray(monthRow.availedDates) ? monthRow.availedDates : [];
+    monthRow.availedDates.push(date.toJSDate());
+  }
+
+  for (const ledger of ledgerByYear.values()) {
+    ledger.monthly = [...(ledger.monthly ?? [])].sort(
+      (a: { month: number }, b: { month: number }) => Number(a.month) - Number(b.month)
+    );
+    await ledger.save();
+  }
 };
 
 const requireTenantAndUser = (req: Request): { organizationId: string; userId: string } => {
@@ -1293,6 +1569,307 @@ export const upsertLeaveLedger = asyncHandler(async (req: Request, res: Response
       leaveType,
       year
     })
+  });
+});
+
+export const createLeaveRequest = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId, userId } = requireTenantAndUser(req);
+  const employeeContext = await resolveEmployeeForAuthenticatedUser(req);
+
+  const action = String(req.body.action ?? 'save').trim().toLowerCase();
+  if (!['save', 'submit'].includes(action)) {
+    throw createHttpError(400, 'action must be save or submit');
+  }
+
+  const leaveType = parseLeaveRequestType(req.body.leaveType);
+  const requestedDurationType = parseLeaveDurationType(req.body.durationType);
+  const durationType = halfDayLeaveRequestTypeValues.includes(
+    leaveType as HalfDayLeaveRequestTypeCode
+  )
+    ? 'first_half'
+    : requestedDurationType;
+  const fromDate = parseIsoDateStrict(req.body.fromDate, 'fromDate');
+  const toDate = parseIsoDateStrict(req.body.toDate, 'toDate');
+  const slices = buildLeaveDateSlices({ fromDate, toDate, leaveType, durationType });
+  const noOfDays = Number(slices.reduce((sum, item) => sum + item.units, 0).toFixed(2));
+  const reason = String(req.body.reason ?? '').trim();
+  if (reason.length < 5) {
+    throw createHttpError(400, 'reason is required (min 5 chars)');
+  }
+
+  const workLocation = String(req.body.workLocation ?? '').trim().slice(0, 120);
+
+  const employeeDoc = await EmployeeModel.findOne({
+    _id: employeeContext.employeeId,
+    organization: organizationId
+  })
+    .select({ managerUser: 1 })
+    .lean();
+
+  if (!employeeDoc) {
+    throw createHttpError(404, 'Employee profile not found');
+  }
+
+  const managerUserId = employeeDoc.managerUser?.toString() ?? '';
+  let approverUserRef: mongoose.Types.ObjectId | null = null;
+  if (managerUserId && mongoose.Types.ObjectId.isValid(managerUserId)) {
+    approverUserRef = new mongoose.Types.ObjectId(managerUserId);
+  }
+
+  if (action === 'submit' && req.user?.role === 'employee' && !approverUserRef) {
+    throw createHttpError(400, 'No manager is assigned for this employee');
+  }
+
+  const requestId = String(req.body.requestId ?? '').trim();
+  let leaveRequestDoc: any;
+
+  if (requestId) {
+    if (!mongoose.Types.ObjectId.isValid(requestId)) {
+      throw createHttpError(400, 'Invalid leave request id');
+    }
+
+    leaveRequestDoc = await AttendanceLeaveRequestModel.findOne({
+      _id: requestId,
+      organization: organizationId,
+      requestedBy: userId
+    }).exec();
+
+    if (!leaveRequestDoc) {
+      throw createHttpError(404, 'Leave request not found');
+    }
+
+    if (leaveRequestDoc.status !== 'pending') {
+      throw createHttpError(400, 'Only pending/draft request can be edited');
+    }
+  } else {
+    leaveRequestDoc = new AttendanceLeaveRequestModel({
+      organization: organizationId,
+      employee: employeeContext.employeeId,
+      requestedBy: userId,
+      auditTrail: [
+        {
+          action: 'created',
+          byUser: new mongoose.Types.ObjectId(userId),
+          at: new Date(),
+          comment: 'Draft created'
+        }
+      ]
+    });
+  }
+
+  leaveRequestDoc.leaveType = leaveType;
+  leaveRequestDoc.durationType = durationType;
+  leaveRequestDoc.fromDate = fromDate;
+  leaveRequestDoc.toDate = toDate;
+  leaveRequestDoc.noOfDays = noOfDays;
+  leaveRequestDoc.reason = reason;
+  leaveRequestDoc.workLocation = workLocation;
+  leaveRequestDoc.approverUser = approverUserRef;
+  leaveRequestDoc.status = action === 'submit' ? 'submitted' : 'pending';
+  leaveRequestDoc.submittedAt = action === 'submit' ? new Date() : null;
+  leaveRequestDoc.decidedAt = null;
+  leaveRequestDoc.decidedBy = null;
+  leaveRequestDoc.decisionComment = '';
+  leaveRequestDoc.auditTrail.push({
+    action: action === 'submit' ? 'submitted' : 'saved',
+    byUser: new mongoose.Types.ObjectId(userId),
+    at: new Date(),
+    comment: reason
+  });
+
+  await leaveRequestDoc.save();
+
+  const populated = await AttendanceLeaveRequestModel.findOne({
+    _id: leaveRequestDoc._id,
+    organization: organizationId
+  })
+    .populate('employee', 'firstName lastName employeeCode')
+    .populate('approverUser', 'name email')
+    .populate('decidedBy', 'name email')
+    .lean();
+
+  if (!populated) {
+    throw createHttpError(500, 'Failed to load leave request');
+  }
+
+  res.status(requestId ? 200 : 201).json({
+    success: true,
+    message: action === 'submit' ? 'Leave request submitted' : 'Leave request saved',
+    data: mapLeaveRequestPayload(populated)
+  });
+});
+
+export const listLeaveRequests = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId } = requireTenantAndUser(req);
+
+  const scope = String(req.query.scope ?? 'mine').trim().toLowerCase();
+  const statusQuery = String(req.query.status ?? '').trim().toLowerCase();
+
+  const query: Record<string, unknown> = {
+    organization: organizationId
+  };
+
+  if (scope === 'assigned') {
+    requireApproverRole(req);
+    if (req.user?.role === 'manager') {
+      query.approverUser = req.user.sub;
+    }
+
+    if (!statusQuery) {
+      query.status = 'submitted';
+    }
+  } else if (scope === 'all') {
+    requireApproverRole(req);
+  } else {
+    query.requestedBy = req.user?.sub;
+  }
+
+  if (statusQuery && statusQuery !== 'all') {
+    if (!leaveRequestStatusValues.includes(statusQuery as LeaveRequestStatusCode)) {
+      throw createHttpError(400, 'Invalid leave request status');
+    }
+
+    query.status = statusQuery;
+  }
+
+  const rows = await AttendanceLeaveRequestModel.find(query)
+    .populate('employee', 'firstName lastName employeeCode')
+    .populate('approverUser', 'name email')
+    .populate('decidedBy', 'name email')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.json({
+    success: true,
+    data: rows.map((row) => mapLeaveRequestPayload(row))
+  });
+});
+
+export const cancelLeaveRequest = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId, userId } = requireTenantAndUser(req);
+
+  const requestId = String(req.params.id ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(requestId)) {
+    throw createHttpError(400, 'Invalid leave request id');
+  }
+
+  const leaveRequestDoc = await AttendanceLeaveRequestModel.findOne({
+    _id: requestId,
+    organization: organizationId,
+    requestedBy: userId
+  }).exec();
+
+  if (!leaveRequestDoc) {
+    throw createHttpError(404, 'Leave request not found');
+  }
+
+  if (!['pending', 'submitted'].includes(leaveRequestDoc.status)) {
+    throw createHttpError(400, 'Only pending/submitted request can be cancelled');
+  }
+
+  const comment = String(req.body.comment ?? '').trim();
+
+  leaveRequestDoc.status = 'cancelled';
+  leaveRequestDoc.decidedAt = new Date();
+  leaveRequestDoc.decidedBy = new mongoose.Types.ObjectId(userId);
+  leaveRequestDoc.decisionComment = comment;
+  leaveRequestDoc.auditTrail.push({
+    action: 'cancelled',
+    byUser: new mongoose.Types.ObjectId(userId),
+    at: new Date(),
+    comment
+  });
+
+  await leaveRequestDoc.save();
+
+  res.json({
+    success: true,
+    message: 'Leave request cancelled'
+  });
+});
+
+const applyLeaveRequestDecision = async (params: {
+  req: Request;
+  approve: boolean;
+}): Promise<void> => {
+  const { organizationId, userId } = requireTenantAndUser(params.req);
+  requireApproverRole(params.req);
+
+  const requestId = String(params.req.params.id ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(requestId)) {
+    throw createHttpError(400, 'Invalid leave request id');
+  }
+
+  const leaveRequestDoc = await AttendanceLeaveRequestModel.findOne({
+    _id: requestId,
+    organization: organizationId
+  }).exec();
+
+  if (!leaveRequestDoc) {
+    throw createHttpError(404, 'Leave request not found');
+  }
+
+  if (leaveRequestDoc.status !== 'submitted') {
+    throw createHttpError(400, 'Leave request is not in submitted state');
+  }
+
+  if (
+    params.req.user?.role === 'manager' &&
+    String(leaveRequestDoc.approverUser ?? '') !== userId
+  ) {
+    throw createHttpError(403, 'Only mapped manager can approve this request');
+  }
+
+  const comment = String(params.req.body.comment ?? '').trim();
+  const leaveType = leaveRequestDoc.leaveType as LeaveRequestTypeCode;
+  const ledgerLeaveType = resolveLedgerLeaveType(leaveType);
+  const isHalfType = halfDayLeaveRequestTypeValues.includes(
+    leaveType as HalfDayLeaveRequestTypeCode
+  );
+  const ledgerDurationType = isHalfType
+    ? 'first_half'
+    : ((leaveRequestDoc.durationType as LeaveDurationTypeCode) ?? 'full_day');
+
+  if (params.approve && ledgerLeaveType) {
+    await applyApprovedLeaveToLedger({
+      organizationId,
+      employeeId: leaveRequestDoc.employee.toString(),
+      leaveType: ledgerLeaveType,
+      fromDate: leaveRequestDoc.fromDate,
+      toDate: leaveRequestDoc.toDate,
+      durationType: ledgerDurationType
+    });
+  }
+
+  leaveRequestDoc.status = params.approve ? 'approved' : 'rejected';
+  leaveRequestDoc.decidedAt = new Date();
+  leaveRequestDoc.decidedBy = new mongoose.Types.ObjectId(userId);
+  leaveRequestDoc.decisionComment = comment;
+  leaveRequestDoc.auditTrail.push({
+    action: params.approve ? 'approved' : 'rejected',
+    byUser: new mongoose.Types.ObjectId(userId),
+    at: new Date(),
+    comment
+  });
+
+  await leaveRequestDoc.save();
+};
+
+export const approveLeaveRequest = asyncHandler(async (req: Request, res: Response) => {
+  await applyLeaveRequestDecision({ req, approve: true });
+
+  res.json({
+    success: true,
+    message: 'Leave request approved'
+  });
+});
+
+export const rejectLeaveRequest = asyncHandler(async (req: Request, res: Response) => {
+  await applyLeaveRequestDecision({ req, approve: false });
+
+  res.json({
+    success: true,
+    message: 'Leave request rejected'
   });
 });
 

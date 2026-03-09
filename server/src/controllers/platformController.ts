@@ -8,12 +8,17 @@ import { AttendanceSettingsModel } from '../models/AttendanceSettings';
 import { getDefaultOrganizationSettings } from '../config/defaultOrganizationSettings';
 import { AuthActionTokenModel } from '../models/AuthActionToken';
 import { AttendanceLeaveLedgerModel } from '../models/AttendanceLeaveLedger';
+import { AttendanceLeaveRequestModel } from '../models/AttendanceLeaveRequest';
 import { AttendancePunchModel } from '../models/AttendancePunch';
 import { AttendanceRegularizationModel } from '../models/AttendanceRegularization';
+import { AppreciationRequestModel } from '../models/AppreciationRequest';
 import { EmployeeModel } from '../models/Employee';
+import { HelpDeskRequestModel } from '../models/HelpDeskRequest';
+import { LeaveEncashmentRequestModel } from '../models/LeaveEncashmentRequest';
 import { OrganizationModel } from '../models/Organization';
 import { OfficeLocationModel } from '../models/OfficeLocation';
 import { RefreshTokenModel } from '../models/RefreshToken';
+import { ResignationRequestModel } from '../models/ResignationRequest';
 import { UserModel } from '../models/User';
 import { asyncHandler } from '../utils/asyncHandler';
 import { deepMerge, isRecord } from '../utils/objectMerge';
@@ -183,8 +188,13 @@ export const deleteOrganization = asyncHandler(async (req: Request, res: Respons
     AttendanceSettingsModel.deleteMany({ organization: organizationId }),
     OfficeLocationModel.deleteMany({ organization: organizationId }),
     AttendanceLeaveLedgerModel.deleteMany({ organization: organizationId }),
+    AttendanceLeaveRequestModel.deleteMany({ organization: organizationId }),
     AttendancePunchModel.deleteMany({ organization: organizationId }),
     AttendanceRegularizationModel.deleteMany({ organization: organizationId }),
+    HelpDeskRequestModel.deleteMany({ organization: organizationId }),
+    AppreciationRequestModel.deleteMany({ organization: organizationId }),
+    ResignationRequestModel.deleteMany({ organization: organizationId }),
+    LeaveEncashmentRequestModel.deleteMany({ organization: organizationId }),
     RefreshTokenModel.deleteMany({ organization: organizationId }),
     AuthActionTokenModel.deleteMany({ organization: organizationId })
   ]);

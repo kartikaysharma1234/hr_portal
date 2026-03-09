@@ -10,6 +10,28 @@ import type {
   AttendanceSettingsRecord,
   LeaveTypeCode
 } from '../types/attendance';
+import type {
+  LeaveDurationType,
+  LeaveRequestRecord,
+  LeaveRequestStatus,
+  LeaveRequestType
+} from '../types/leaveRequest';
+import type {
+  AppreciationRecord,
+  AppreciationScope,
+  AppreciationStatus,
+  HelpDeskRecord,
+  HelpDeskScope,
+  HelpDeskStatus,
+  LeaveEncashmentMeta,
+  LeaveEncashmentRecord,
+  LeaveEncashmentScope,
+  LeaveEncashmentStatus,
+  RequestMastersPayload,
+  ResignationRecord,
+  ResignationScope,
+  ResignationStatus
+} from '../types/requestModules';
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -144,6 +166,247 @@ export const attendanceApi = {
     const response = await apiClient.put<ApiEnvelope<AttendanceLeaveLedger>>(
       '/v1/attendance/leave-ledger',
       payload
+    );
+    return response.data.data;
+  },
+
+  async createLeaveRequest(payload: {
+    requestId?: string;
+    action: 'save' | 'submit';
+    leaveType: LeaveRequestType;
+    durationType: LeaveDurationType;
+    fromDate: string;
+    toDate: string;
+    reason: string;
+    workLocation?: string;
+  }): Promise<LeaveRequestRecord> {
+    const response = await apiClient.post<ApiEnvelope<LeaveRequestRecord>>(
+      '/v1/attendance/leave-requests',
+      payload
+    );
+    return response.data.data;
+  },
+
+  async listLeaveRequests(params?: {
+    scope?: 'mine' | 'assigned' | 'all';
+    status?: LeaveRequestStatus | 'all';
+  }): Promise<LeaveRequestRecord[]> {
+    const response = await apiClient.get<ApiEnvelope<LeaveRequestRecord[]>>(
+      '/v1/attendance/leave-requests',
+      { params }
+    );
+    return response.data.data;
+  },
+
+  async cancelLeaveRequest(id: string, comment = ''): Promise<void> {
+    await apiClient.post(`/v1/attendance/leave-requests/cancel/${id}`, { comment });
+  },
+
+  async approveLeaveRequest(id: string, comment = ''): Promise<void> {
+    await apiClient.post(`/v1/attendance/leave-requests/approve/${id}`, { comment });
+  },
+
+  async rejectLeaveRequest(id: string, comment = ''): Promise<void> {
+    await apiClient.post(`/v1/attendance/leave-requests/reject/${id}`, { comment });
+  },
+
+  async getRequestMasters(): Promise<RequestMastersPayload> {
+    const response = await apiClient.get<ApiEnvelope<RequestMastersPayload>>('/v1/attendance/request-masters');
+    return response.data.data;
+  },
+
+  async createHelpDeskRequest(payload: {
+    requestId?: string;
+    action: 'save' | 'submit';
+    ticketType: string;
+    targetType: 'support_owner' | 'reporting_manager';
+    assignedToUserId?: string;
+    priority: 'high' | 'medium' | 'low';
+    subject: string;
+    description: string;
+    attachments?: string[];
+  }): Promise<HelpDeskRecord> {
+    const response = await apiClient.post<ApiEnvelope<HelpDeskRecord>>(
+      '/v1/attendance/helpdesk-requests',
+      payload
+    );
+    return response.data.data;
+  },
+
+  async listHelpDeskRequests(params?: {
+    scope?: HelpDeskScope;
+    status?: HelpDeskStatus | 'all';
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<HelpDeskRecord[]> {
+    const response = await apiClient.get<ApiEnvelope<HelpDeskRecord[]>>('/v1/attendance/helpdesk-requests', {
+      params
+    });
+    return response.data.data;
+  },
+
+  async cancelHelpDeskRequest(id: string, comment = ''): Promise<void> {
+    await apiClient.post(`/v1/attendance/helpdesk-requests/cancel/${id}`, { comment });
+  },
+
+  async respondHelpDeskRequest(id: string, responseText: string): Promise<HelpDeskRecord> {
+    const response = await apiClient.post<ApiEnvelope<HelpDeskRecord>>(
+      `/v1/attendance/helpdesk-requests/respond/${id}`,
+      { response: responseText }
+    );
+    return response.data.data;
+  },
+
+  async createAppreciationRequest(payload: {
+    requestId?: string;
+    action: 'save' | 'submit';
+    appreciationToUserId: string;
+    appreciationCategory: string;
+    appreciationTitle: string;
+    description: string;
+    approverUserId?: string;
+  }): Promise<AppreciationRecord> {
+    const response = await apiClient.post<ApiEnvelope<AppreciationRecord>>(
+      '/v1/attendance/appreciation-requests',
+      payload
+    );
+    return response.data.data;
+  },
+
+  async listAppreciationRequests(params?: {
+    scope?: AppreciationScope;
+    status?: AppreciationStatus | 'all';
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<AppreciationRecord[]> {
+    const response = await apiClient.get<ApiEnvelope<AppreciationRecord[]>>(
+      '/v1/attendance/appreciation-requests',
+      { params }
+    );
+    return response.data.data;
+  },
+
+  async cancelAppreciationRequest(id: string, comment = ''): Promise<void> {
+    await apiClient.post(`/v1/attendance/appreciation-requests/cancel/${id}`, { comment });
+  },
+
+  async approveAppreciationRequest(id: string, comment = ''): Promise<AppreciationRecord> {
+    const response = await apiClient.post<ApiEnvelope<AppreciationRecord>>(
+      `/v1/attendance/appreciation-requests/approve/${id}`,
+      { comment }
+    );
+    return response.data.data;
+  },
+
+  async rejectAppreciationRequest(id: string, comment = ''): Promise<AppreciationRecord> {
+    const response = await apiClient.post<ApiEnvelope<AppreciationRecord>>(
+      `/v1/attendance/appreciation-requests/reject/${id}`,
+      { comment }
+    );
+    return response.data.data;
+  },
+
+  async createResignationRequest(payload: {
+    dateOfResignation: string;
+    noticePeriodDays?: number;
+    expectedLastDate: string;
+    reasonForExit: string;
+    description: string;
+    hrManagerUserId?: string;
+  }): Promise<ResignationRecord> {
+    const response = await apiClient.post<ApiEnvelope<ResignationRecord>>(
+      '/v1/attendance/resignation-requests',
+      payload
+    );
+    return response.data.data;
+  },
+
+  async listResignationRequests(params?: {
+    scope?: ResignationScope;
+    status?: ResignationStatus | 'all';
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<ResignationRecord[]> {
+    const response = await apiClient.get<ApiEnvelope<ResignationRecord[]>>(
+      '/v1/attendance/resignation-requests',
+      { params }
+    );
+    return response.data.data;
+  },
+
+  async cancelResignationRequest(id: string, comment = ''): Promise<void> {
+    await apiClient.post(`/v1/attendance/resignation-requests/cancel/${id}`, { comment });
+  },
+
+  async approveResignationRequest(id: string, comment = ''): Promise<ResignationRecord> {
+    const response = await apiClient.post<ApiEnvelope<ResignationRecord>>(
+      `/v1/attendance/resignation-requests/approve/${id}`,
+      { comment }
+    );
+    return response.data.data;
+  },
+
+  async rejectResignationRequest(id: string, comment = ''): Promise<ResignationRecord> {
+    const response = await apiClient.post<ApiEnvelope<ResignationRecord>>(
+      `/v1/attendance/resignation-requests/reject/${id}`,
+      { comment }
+    );
+    return response.data.data;
+  },
+
+  async getLeaveEncashmentMeta(leaveType: 'PL' | 'CL' | 'SL' | 'OH'): Promise<LeaveEncashmentMeta> {
+    const response = await apiClient.get<ApiEnvelope<LeaveEncashmentMeta>>('/v1/attendance/leave-encashment/meta', {
+      params: {
+        leaveType
+      }
+    });
+    return response.data.data;
+  },
+
+  async createLeaveEncashmentRequest(payload: {
+    requestId?: string;
+    action: 'save' | 'submit';
+    leaveType: 'PL' | 'CL' | 'SL' | 'OH';
+    daysToEncash: number;
+    purpose: string;
+    approverUserId?: string;
+  }): Promise<LeaveEncashmentRecord> {
+    const response = await apiClient.post<ApiEnvelope<LeaveEncashmentRecord>>(
+      '/v1/attendance/leave-encashment-requests',
+      payload
+    );
+    return response.data.data;
+  },
+
+  async listLeaveEncashmentRequests(params?: {
+    scope?: LeaveEncashmentScope;
+    status?: LeaveEncashmentStatus | 'all';
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<LeaveEncashmentRecord[]> {
+    const response = await apiClient.get<ApiEnvelope<LeaveEncashmentRecord[]>>(
+      '/v1/attendance/leave-encashment-requests',
+      { params }
+    );
+    return response.data.data;
+  },
+
+  async cancelLeaveEncashmentRequest(id: string, comment = ''): Promise<void> {
+    await apiClient.post(`/v1/attendance/leave-encashment-requests/cancel/${id}`, { comment });
+  },
+
+  async approveLeaveEncashmentRequest(id: string, comment = ''): Promise<LeaveEncashmentRecord> {
+    const response = await apiClient.post<ApiEnvelope<LeaveEncashmentRecord>>(
+      `/v1/attendance/leave-encashment-requests/approve/${id}`,
+      { comment }
+    );
+    return response.data.data;
+  },
+
+  async rejectLeaveEncashmentRequest(id: string, comment = ''): Promise<LeaveEncashmentRecord> {
+    const response = await apiClient.post<ApiEnvelope<LeaveEncashmentRecord>>(
+      `/v1/attendance/leave-encashment-requests/reject/${id}`,
+      { comment }
     );
     return response.data.data;
   },

@@ -6,6 +6,7 @@ import {
   bulkApprovePunches,
   createAttendanceSettings,
   createOfficeLocation,
+  createLeaveRequest,
   createRegularization,
   deleteAttendanceSettings,
   deleteOfficeLocation,
@@ -28,15 +29,42 @@ import {
   importAttendanceBiometric,
   importAttendanceCsv,
   listOfficeLocations,
+  listLeaveRequests,
   listRegularizationRequests,
   punchIn,
   punchOut,
+  cancelLeaveRequest,
+  approveLeaveRequest,
+  rejectLeaveRequest,
   rejectPunch,
   rejectRegularization,
   upsertLeaveLedger,
   updateAttendanceSettings,
   updateOfficeLocation
 } from '../controllers/attendanceController';
+import {
+  approveAppreciationRequest,
+  approveLeaveEncashmentRequest,
+  approveResignationRequest,
+  cancelAppreciationRequest,
+  cancelHelpDeskRequest,
+  cancelLeaveEncashmentRequest,
+  cancelResignationRequest,
+  createAppreciationRequest,
+  createHelpDeskRequest,
+  createLeaveEncashmentRequest,
+  createResignationRequest,
+  getLeaveEncashmentMeta,
+  getRequestMasters,
+  listAppreciationRequests,
+  listHelpDeskRequests,
+  listLeaveEncashmentRequests,
+  listResignationRequests,
+  rejectAppreciationRequest,
+  rejectLeaveEncashmentRequest,
+  rejectResignationRequest,
+  respondHelpDeskRequest
+} from '../controllers/requestController';
 import { requireAuth } from '../middleware/authMiddleware';
 import { resolveTenant } from '../middleware/tenantMiddleware';
 
@@ -52,6 +80,37 @@ attendanceRouter.get('/daily/:date', getDailyAttendanceDetail);
 attendanceRouter.get('/leave-ledger', getMyLeaveLedger);
 attendanceRouter.put('/leave-ledger', upsertLeaveLedger);
 attendanceRouter.get('/leave-ledger/employees', listLeaveLedgerEmployees);
+attendanceRouter.post('/leave-requests', createLeaveRequest);
+attendanceRouter.get('/leave-requests', listLeaveRequests);
+attendanceRouter.post('/leave-requests/cancel/:id', cancelLeaveRequest);
+attendanceRouter.post('/leave-requests/approve/:id', approveLeaveRequest);
+attendanceRouter.post('/leave-requests/reject/:id', rejectLeaveRequest);
+
+attendanceRouter.get('/request-masters', getRequestMasters);
+
+attendanceRouter.post('/helpdesk-requests', createHelpDeskRequest);
+attendanceRouter.get('/helpdesk-requests', listHelpDeskRequests);
+attendanceRouter.post('/helpdesk-requests/cancel/:id', cancelHelpDeskRequest);
+attendanceRouter.post('/helpdesk-requests/respond/:id', respondHelpDeskRequest);
+
+attendanceRouter.post('/appreciation-requests', createAppreciationRequest);
+attendanceRouter.get('/appreciation-requests', listAppreciationRequests);
+attendanceRouter.post('/appreciation-requests/cancel/:id', cancelAppreciationRequest);
+attendanceRouter.post('/appreciation-requests/approve/:id', approveAppreciationRequest);
+attendanceRouter.post('/appreciation-requests/reject/:id', rejectAppreciationRequest);
+
+attendanceRouter.post('/resignation-requests', createResignationRequest);
+attendanceRouter.get('/resignation-requests', listResignationRequests);
+attendanceRouter.post('/resignation-requests/cancel/:id', cancelResignationRequest);
+attendanceRouter.post('/resignation-requests/approve/:id', approveResignationRequest);
+attendanceRouter.post('/resignation-requests/reject/:id', rejectResignationRequest);
+
+attendanceRouter.get('/leave-encashment/meta', getLeaveEncashmentMeta);
+attendanceRouter.post('/leave-encashment-requests', createLeaveEncashmentRequest);
+attendanceRouter.get('/leave-encashment-requests', listLeaveEncashmentRequests);
+attendanceRouter.post('/leave-encashment-requests/cancel/:id', cancelLeaveEncashmentRequest);
+attendanceRouter.post('/leave-encashment-requests/approve/:id', approveLeaveEncashmentRequest);
+attendanceRouter.post('/leave-encashment-requests/reject/:id', rejectLeaveEncashmentRequest);
 
 attendanceRouter.get('/settings', getAttendanceSettings);
 attendanceRouter.post('/settings', createAttendanceSettings);
