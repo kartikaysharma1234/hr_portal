@@ -218,7 +218,7 @@ export const DashboardLayout = (): JSX.Element => {
               className={`ess-nav-link ess-nav-group-toggle ${requestOpen ? 'ess-nav-group-toggle--open' : ''}`}
               onClick={() => setRequestOpen(!requestOpen)}
             >
-              <span className="ess-nav-icon">RQ</span>
+              <span className="ess-nav-icon ess-nav-icon--rq" aria-hidden="true" />
               <span>Request</span>
               <span className={`ess-nav-chevron ${requestOpen ? 'ess-nav-chevron--open' : ''}`}>▸</span>
             </button>
