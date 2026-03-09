@@ -29,6 +29,15 @@ const myAttendanceItems = [
   { to: '/attendance/leave-ledger', label: 'Leave Ledger' },
 ];
 
+const requestItems = [
+  { to: '/request/attendance-regularise', label: 'Attendance Regularise' },
+  { to: '/request/leave-od-wfh', label: 'Leave/OD/WFH' },
+  { to: '/request/helpdesk', label: 'HelpDesk' },
+  { to: '/request/appreciation', label: 'Appreciation' },
+  { to: '/request/resignation-note', label: 'Resignation Note' },
+  { to: '/request/leave-encashment', label: 'Leave Encashment' }
+];
+
 export const DashboardLayout = (): JSX.Element => {
   const { user, logout } = useAuth();
   const canManageUsers = user?.role === 'admin' || user?.role === 'super_admin';
@@ -42,6 +51,9 @@ export const DashboardLayout = (): JSX.Element => {
   const [myAttendanceOpen, setMyAttendanceOpen] = useState(() =>
     location.pathname.startsWith('/attendance')
   );
+  const [requestOpen, setRequestOpen] = useState(() =>
+    location.pathname.startsWith('/request')
+  );
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +64,9 @@ export const DashboardLayout = (): JSX.Element => {
     }
     if (location.pathname.startsWith('/attendance')) {
       setMyAttendanceOpen(true);
+    }
+    if (location.pathname.startsWith('/request')) {
+      setRequestOpen(true);
     }
   }, [location.pathname]);
 
@@ -182,6 +197,34 @@ export const DashboardLayout = (): JSX.Element => {
 
             <div className={`ess-nav-submenu ${myAttendanceOpen ? 'ess-nav-submenu--open' : ''}`}>
               {myAttendanceItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `ess-nav-sublink ${isActive ? 'ess-nav-sublink--active' : ''}`
+                  }
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+
+          {/* Request - Collapsible */}
+          <div className="ess-nav-group">
+            <button
+              type="button"
+              className={`ess-nav-link ess-nav-group-toggle ${requestOpen ? 'ess-nav-group-toggle--open' : ''}`}
+              onClick={() => setRequestOpen(!requestOpen)}
+            >
+              <span className="ess-nav-icon">RQ</span>
+              <span>Request</span>
+              <span className={`ess-nav-chevron ${requestOpen ? 'ess-nav-chevron--open' : ''}`}>▸</span>
+            </button>
+
+            <div className={`ess-nav-submenu ${requestOpen ? 'ess-nav-submenu--open' : ''}`}>
+              {requestItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

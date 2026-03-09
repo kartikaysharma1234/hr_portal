@@ -25,7 +25,15 @@ import {
   ProfileSkillPage,
 } from '../pages/ProfilePlaceholders';
 import { ProfileWorkExpPage } from '../pages/ProfileWorkExpPage';
+import { AttendanceRegularisePage } from '../pages/AttendanceRegularisePage';
 import { RegisterPage } from '../pages/RegisterPage';
+import {
+  AppreciationRequestPage,
+  HelpDeskRequestPage,
+  LeaveEncashmentPage,
+  LeaveOdWfhPage,
+  ResignationNotePage
+} from '../pages/RequestPlaceholders';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage';
 import { SalarySlipPage } from '../pages/SalarySlipPage';
 import { SuperAdminDashboardPage } from '../pages/SuperAdminDashboardPage';
@@ -102,6 +110,16 @@ export const AppRoutes = (): JSX.Element => {
           <Route path="/attendance/monthly" element={<AttendanceMonthlyPage />} />
           <Route path="/attendance/yearly" element={<AttendanceYearlyPage />} />
           <Route path="/attendance/leave-ledger" element={<AttendanceLeaveLedgerPage />} />
+          <Route
+            path="/request"
+            element={<Navigate to="/request/attendance-regularise" replace />}
+          />
+          <Route path="/request/attendance-regularise" element={<AttendanceRegularisePage />} />
+          <Route path="/request/leave-od-wfh" element={<LeaveOdWfhPage />} />
+          <Route path="/request/helpdesk" element={<HelpDeskRequestPage />} />
+          <Route path="/request/appreciation" element={<AppreciationRequestPage />} />
+          <Route path="/request/resignation-note" element={<ResignationNotePage />} />
+          <Route path="/request/leave-encashment" element={<LeaveEncashmentPage />} />
           <Route path="/profile" element={<Navigate to="/profile/personal" replace />} />
           <Route path="/profile/personal" element={<ProfilePersonalPage />} />
           <Route path="/profile/company" element={<EmployeeProfilePage />} />

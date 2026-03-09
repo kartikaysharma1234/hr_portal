@@ -2346,6 +2346,11 @@ a {
   overflow: hidden;
 }
 
+.ess-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .ess-btn--primary {
   background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
   color: #fff;
@@ -2661,6 +2666,25 @@ a {
   font-weight: 700;
   color: #3b3f5c;
   font-variant-numeric: tabular-nums;
+}
+
+.ess-punch-window {
+  margin: 8px 0 0;
+  color: #98a7cf;
+  font-size: 12px;
+}
+
+.ess-punch-feedback {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+.ess-punch-feedback--ok {
+  color: #8ce6b0;
+}
+
+.ess-punch-feedback--error {
+  color: #ff9da2;
 }
 
 .ess-punch-actions {
